@@ -1,4 +1,4 @@
-﻿// ====================================================================================
+// ====================================================================================
 // script.js - VERSION MIT FUNKTIONS-ABFRAGE & VORAUSWAHL
 // ====================================================================================
 
@@ -324,7 +324,7 @@ async function refreshData(showProgress = true) {
             fetchAndHandle(`${STRAPI_BASE_URL}/api/technologies?populate[0]=icon&pagination[pageSize]=100&_t=${Date.now()}`, 'Technologien'),
             fetchAndHandle(`${STRAPI_BASE_URL}/api/tuerens?populate[0]=icon&pagination[pageSize]=100&_t=${Date.now()}`, 'Tueren'),
             fetchAndHandle(`${STRAPI_BASE_URL}/api/funktionens?populate[0]=icon&pagination[pageSize]=100&_t=${Date.now()}`, 'Funktionen'),
-            fetchAndHandle(`${STRAPI_BASE_URL}/api/questions?populate[0]=objekttyps&populate[1]=anlagentyps&populate[2]=qualitaets&populate[3]=technologies&populate[4]=tuerens&populate[5]=funktionens&populate[6]=zylinders&populate[7]=zylinders.objekttyps&populate[8]=zylinders.anlagentyps&populate[9]=zylinders.technologies&populate[10]=zylinders.qualitaets&populate[11]=zylinders.funktionens&pagination[pageSize]=100&publicationState=preview&_t=${Date.now()}`, 'Questions')
+            fetchAndHandle(`${STRAPI_BASE_URL}/api/questions?populate[0]=objekttyps&populate[1]=anlagentyps&populate[2]=qualitaets&populate[3]=technologies&populate[4]=tuerens&populate[5]=funktionens&populate[6]=zylinders&populate[7]=zylinders.objekttyps&populate[8]=zylinders.anlagentyps&populate[9]=zylinders.technologies&populate[10]=zylinders.qualitaets&populate[11]=zylinders.funktionens&pagination[pageSize]=100&publicationState=preview&sort=order:asc&_t=${Date.now()}`, 'Questions')
         ]);
         
         console.log('📊 Content Types geladen:', {
@@ -672,7 +672,7 @@ async function refreshData(showProgress = true) {
                     order: questionData.order || 1,
                     options: options
             };
-        });
+        }).sort((a, b) => a.order - b.order); // Sortiere nach order Feld
         } else {
             console.log('📊 Erstelle Fallback-Fragen...');
             // Fallback-Fragen erstellen
