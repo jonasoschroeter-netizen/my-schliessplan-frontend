@@ -6,7 +6,7 @@
 const ZYLINDER_ARTEN = ["Doppelzylinder", "Halbzylinder", "Knaufzylinder", "Außenzylinder"];
 // ALL_FEATURES wird jetzt dynamisch aus dem Backend geladen
 let ALL_FEATURES = {};
-const STRAPI_BASE_URL = 'http://localhost:1337'; // Lokaler Strapi Server
+const STRAPI_BASE_URL = 'https://brave-basketball-98ec57b285.strapiapp.com'; // Strapi Cloud Backend
 
 // Cache-Busting Konfiguration
 const CACHE_BUSTING = true; // Aktiviert Cache-Busting für alle API-Aufrufe
