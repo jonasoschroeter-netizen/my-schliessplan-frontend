@@ -1,0 +1,98 @@
+﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interaktiver Schließplan Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+    <div class="w-full max-w-7xl mx-auto bg-white rounded-2xl shadow-xl p-6 md:p-10">
+
+        <div class="flex items-center space-x-4">
+            <div id="logo" class="flex items-center">
+                <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiBmaWxsPSIjN0NBQ0YwIi8+Cjx0ZXh0IHg9IjE2IiB5PSIyMCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0IiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+TDwvdGV4dD4KPC9zdmc+" alt="Firmenlogo" class="h-8 w-auto">
+            </div>
+            <button id="refresh-data-btn" onclick="manualRefresh()" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-lg text-sm flex items-center gap-2 transition-colors">
+                <i class="fas fa-sync-alt"></i>
+                Daten aktualisieren
+            </button>
+        </div>
+
+        <div id="questionnaire-container">
+            <h1 class="text-3xl font-bold text-center text-gray-800 mb-2">Ihr Weg zum perfekten Schließplan</h1>
+            <p id="questionnaire-subtitle" class="text-center text-gray-500 mb-8">Schritt für Schritt zu Ihrer individuellen Schließanlage.</p>
+            <div class="w-full bg-gray-200 rounded-full h-2.5 mb-8">
+                <div id="progress-bar" class="bg-[#1a3d5c] h-2.5 rounded-full progress-bar-fill" style="width: 0%"></div>
+            </div>
+            <!-- Container für Fragen und den neuen Zylinder-Assistenten -->
+            <div id="content-container"></div>
+            <div class="flex justify-between mt-8" id="navigation-buttons">
+                <button id="prev-btn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg transition-colors disabled:opacity-50">Zurück</button>
+                <button id="next-btn" class="bg-[#1a3d5c] hover:bg-[#143149] text-white font-bold py-2 px-6 rounded-lg transition-colors">Weiter</button>
+            </div>
+        </div>
+
+        <div id="schliessplan-container" class="hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h1 class="text-3xl font-bold text-gray-800">Ihr persönlicher Schließplan</h1>
+                <button id="back-to-questions-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg flex items-center"><i class="fas fa-pencil-alt mr-2"></i> Konfiguration bearbeiten</button>
+            </div>
+            <div id="color-legend" class="flex justify-end items-center gap-4 mb-4 text-sm">
+                <span class="font-semibold">Legende:</span>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 bg-white border"></div><span>Mechanisch</span></div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4" style="background-color: #e0f2fe;"></div><span>Elektronisch</span></div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse schliessplan-table">
+                    <thead>
+                        <tr>
+                            <th colspan="8" class="schliessplan-header-main">Schließzylinder</th>
+                            <td class="border-none bg-gray-100"></td>
+                            <th id="schluessel-header-main" colspan="2" class="schliessplan-header-main">Schlüsselmatrix</th>
+                        </tr>
+                        <tr>
+                            <th class="schliessplan-header-sub">POS</th>
+                            <th class="schliessplan-header-sub">Türbezeichnung</th>
+                            <th class="schliessplan-header-sub">Zylindertyp</th>
+                            <!-- NEUE SPALTE -->
+                            <th class="schliessplan-header-sub">System</th>
+                            <th class="schliessplan-header-sub" id="tech-header">Technologie</th>
+                            <th class="schliessplan-header-sub">Maße A/I</th>
+                            <th class="schliessplan-header-sub">Anzahl</th>
+                            <th class="schliessplan-header-sub">Funktionen</th>
+                            <td class="border-none bg-gray-100"></td>
+                            <td class="schliessplan-header-vertical">Schlüsselgruppen</td>
+                            <td class="p-0" id="dynamic-header-cell">
+                                <div class="flex h-full" id="schluessel-header-dynamic"></div>
+                            </td>
+                        </tr>
+                    </thead>
+                    <tbody id="schliessplan-body"></tbody>
+                </table>
+            </div>
+            <div class="flex justify-between mt-6">
+                <div><button id="add-row-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i class="fas fa-plus mr-2"></i> Zeile hinzufügen</button></div>
+                <div><button id="add-key-btn" class="bg-[#2a95c3] hover:bg-[#22779a] text-white font-bold py-2 px-4 rounded-lg flex items-center"><i class="fas fa-key mr-2"></i> Schlüsselgruppe hinzufügen</button></div>
+            </div>
+        </div>
+
+        <div id="function-modal" class="modal-overlay">
+            <div class="modal-content">
+                <h3 class="text-2xl font-bold text-gray-800 mb-6" id="modal-title">Funktionen für Tür: Haustür</h3>
+                <div class="space-y-4" id="features-container">
+                    <!-- Funktionen werden dynamisch aus dem Backend geladen -->
+                </div>
+                <div class="flex justify-end mt-8 gap-4">
+                    <button id="modal-cancel-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-6 rounded-lg">Abbrechen</button>
+                    <button id="modal-save-btn" class="bg-[#1a3d5c] hover:bg-[#143149] text-white font-bold py-2 px-6 rounded-lg">Speichern</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

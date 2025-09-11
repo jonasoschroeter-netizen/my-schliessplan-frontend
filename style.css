@@ -1,0 +1,277 @@
+﻿body {
+    font-family: 'Inter', sans-serif;
+    background-color: #f3f4f6;
+}
+
+#content-container {
+    position: relative;
+    overflow: hidden;
+    min-height: 420px;
+    padding-top: 10px;
+}
+
+.question-card {
+    transition: transform 0.4s ease-in-out, opacity 0.4s ease-in-out;
+    width: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+    .question-card.hidden {
+        opacity: 0;
+        pointer-events: none;
+    }
+
+.option-card {
+    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s, background-color 0.2s;
+    overflow: visible;
+    position: relative;
+}
+
+    .option-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+
+    .option-card.selected {
+        border-color: #1a3d5c; /* Standard-Auswahl: Blau */
+        background-color: #e8f0f5;
+        transform: translateY(-2px);
+    }
+
+    .option-card.selected-custom {
+        border-color: #10B981; /* Benutzerdefinierte Auswahl: Grün */
+        background-color: #f0fdf4; /* Heller grüner Hintergrund */
+        transform: translateY(-2px);
+    }
+
+
+    .option-card::before {
+        content: '';
+        position: absolute;
+        bottom: 8px;
+        right: 8px;
+        width: 30px;
+        height: 30px;
+        background-image: var(--firmen-logo);
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: contain;
+        opacity: 1;
+        z-index: 1;
+    }
+
+    .option-card.is-recommended {
+        border-color: #10B981;
+        border-width: 2px;
+    }
+
+        .option-card.is-recommended::after {
+            content: 'Empfohlen';
+            position: absolute;
+            top: -11px;
+            right: 8px;
+            background-color: #10B981;
+            color: white;
+            font-size: 0.7rem;
+            font-weight: bold;
+            padding: 3px 10px;
+            border-radius: 9999px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transform: rotate(10deg);
+            z-index: 10;
+        }
+
+    .option-card.is-custom-card::before {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23a0aec0'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E");
+        background-color: #e2e8f0;
+        border-radius: 50%;
+        border: 1px solid #cbd5e0;
+    }
+
+
+.progress-bar-fill {
+    transition: width 0.4s ease-in-out;
+}
+
+/* NEUE STILE FÜR DEN ZYLINDER-ASSISTENTEN */
+.cylinder-card {
+    border: 2px solid #e5e7eb;
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    background-color: white;
+    transition: all 0.2s ease-in-out;
+    position: relative;
+    overflow: hidden;
+}
+
+    .cylinder-card.is-recommended {
+        border-color: #10B981;
+        box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+    }
+
+        .cylinder-card.is-recommended::after {
+            content: 'Unsere Empfehlung';
+            position: absolute;
+            top: 10px;
+            right: -45px;
+            background-color: #10B981;
+            color: white;
+            padding: 4px 40px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            transform: rotate(45deg);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+.cylinder-feature-list {
+    list-style: none;
+    padding: 0;
+}
+
+    .cylinder-feature-list li {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 0.5rem;
+        color: #4b5563;
+    }
+
+    .cylinder-feature-list i {
+        color: #1a3d5c;
+    }
+
+
+.schliessplan-table th,
+.schliessplan-table td {
+    border: 1px solid #d1d5db;
+    padding: 8px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.schliessplan-header-main {
+    background-color: #374151;
+    color: white;
+    padding: 4px;
+    text-align: center;
+    font-weight: bold;
+}
+
+.schliessplan-header-sub {
+    background-color: #2a95c3;
+    color: white;
+}
+
+.input-cell {
+    background-color: #f9fafb;
+    border-radius: 6px;
+    border: 1px solid #d1d5db;
+    padding: 6px 10px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+input:focus,
+select:focus {
+    outline: 2px solid #1a3d5c;
+    border-color: #1a3d5c;
+}
+
+.schliessmatrix-cell {
+    cursor: pointer;
+    width: 48px;
+    height: 48px;
+    transition: background-color 0.2s;
+}
+
+    .schliessmatrix-cell:hover {
+        background-color: #eff6ff;
+    }
+
+    .schliessmatrix-cell.checked {
+        background-color: #1a3d5c;
+        color: white;
+    }
+
+.schliessplan-header-vertical {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    white-space: nowrap;
+    padding: 8px 4px;
+    background-color: #2a95c3;
+    color: white;
+    font-weight: bold;
+}
+
+.schluessel-header-zelle {
+    flex: 1;
+    position: relative;
+    border-left: 1px solid #d1d5db;
+    min-width: 45px;
+    height: 160px;
+}
+
+    .schluessel-header-zelle input {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translateX(-50%) translateY(-50%) rotate(-90deg);
+        width: 150px;
+        background: transparent;
+        border: none;
+        outline: none;
+        font-weight: 600;
+        color: #374151;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding: 0 5px;
+    }
+
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease-in-out;
+}
+
+    .modal-overlay.active {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+.modal-content {
+    background: white;
+    padding: 2rem;
+    border-radius: 0.75rem;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    width: 90%;
+    max-width: 500px;
+    transform: scale(0.95);
+    transition: transform 0.3s ease-in-out;
+}
+
+.modal-overlay.active .modal-content {
+    transform: scale(1);
+}
+
+.row-mechanisch {
+    background-color: #ffffff;
+}
+
+.row-elektronisch {
+    background-color: #e0f2fe;
+}
