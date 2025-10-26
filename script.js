@@ -110,6 +110,9 @@ function collectZylindersFromQuestions(questionsResponse) {
 function getRecommendedCylinders(userAnswers) {
     console.log('🔍 Suche passende Zylinder für:', userAnswers);
     
+    // Debug: Speichere userAnswers
+    debugData.userAnswers = userAnswers;
+    
     if (!allCylinderSystems || allCylinderSystems.length === 0) {
         console.log('❌ Keine Zylinder verfügbar');
         return [];
@@ -126,11 +129,18 @@ function getRecommendedCylinders(userAnswers) {
         }
     }
     
+    // Debug: Match-Daten für alle Zylinder sammeln
+    const debugMatchData = [];
+    
     // Berechne Match-Prozentsatz für alle Zylinder
     const cylindersWithMatch = allCylinderSystems.map(cylinder => {
         if (!cylinder.isActive) {
             return { ...cylinder, matchPercentage: 0, isMatch: false };
         }
+        
+        // Debug: Detaillierte Match-Berechnung
+        const cylinderDebugInfo = debugMatchCalculation(userAnswers, cylinder);
+        debugMatchData.push(cylinderDebugInfo);
         
         let matchCount = 0;
         let totalChecks = 0;
@@ -176,23 +186,41 @@ function getRecommendedCylinders(userAnswers) {
         
         // Prüfe Türen
         if (userAnswers.tueren && userAnswers.tueren.length > 0) {
-            const matchingTueren = userAnswers.tueren.filter(selectedTuer => 
-                cylinder.suitableTueren && cylinder.suitableTueren.some(option => 
-                    option.name === selectedTuer || option.key === selectedTuer
-                )
-            );
-            matchCount += matchingTueren.length;
+            // WENN Zylinder hat keine suitableTueren definiert, zähle es als Match (flexibel)
+            const hasNoTuerenRestriction = !cylinder.suitableTueren || cylinder.suitableTueren.length === 0;
+            
+            if (hasNoTuerenRestriction) {
+                // Keine Einschränkung = alle Türen matchen
+                matchCount += userAnswers.tueren.length;
+            } else {
+                // Prüfe gegen die Einschränkungen
+                const matchingTueren = userAnswers.tueren.filter(selectedTuer => 
+                    cylinder.suitableTueren.some(option => 
+                        option.name === selectedTuer || option.key === selectedTuer
+                    )
+                );
+                matchCount += matchingTueren.length;
+            }
             totalChecks += userAnswers.tueren.length;
         }
         
         // Prüfe Funktionen
         if (userAnswers.funktionen && userAnswers.funktionen.length > 0) {
-            const matchingFeatures = userAnswers.funktionen.filter(selectedFeature => 
-                cylinder.suitableFeatures.some(option => 
-                    option.name === selectedFeature || option.key === selectedFeature
-                )
-            );
-            matchCount += matchingFeatures.length;
+            // WENN Zylinder hat keine suitableFeatures definiert, zähle es als Match (flexibel)
+            const hasNoFeaturesRestriction = !cylinder.suitableFeatures || cylinder.suitableFeatures.length === 0;
+            
+            if (hasNoFeaturesRestriction) {
+                // Keine Einschränkung = alle Funktionen matchen
+                matchCount += userAnswers.funktionen.length;
+            } else {
+                // Prüfe gegen die Einschränkungen
+                const matchingFeatures = userAnswers.funktionen.filter(selectedFeature => 
+                    cylinder.suitableFeatures.some(option => 
+                        option.name === selectedFeature || option.key === selectedFeature
+                    )
+                );
+                matchCount += matchingFeatures.length;
+            }
             totalChecks += userAnswers.funktionen.length;
         }
         
@@ -220,6 +248,9 @@ function getRecommendedCylinders(userAnswers) {
             }
             return a.sortOrder - b.sortOrder;
         });
+    
+    // Debug: Speichere Match-Daten
+    debugData.cylinderMatchData = debugMatchData;
     
     console.log(`🎯 ${sortedCylinders.length} Zylinder sortiert nach Match-Prozentsatz`);
     return sortedCylinders;
@@ -326,6 +357,17 @@ async function refreshData(showProgress = true) {
             fetchAndHandle(`${STRAPI_BASE_URL}/api/funktionens?populate[0]=icon&pagination[pageSize]=100&_t=${Date.now()}`, 'Funktionen'),
             fetchAndHandle(`${STRAPI_BASE_URL}/api/questions?populate[0]=objekttyps&populate[1]=anlagentyps&populate[2]=qualitaets&populate[3]=technologies&populate[4]=tuerens&populate[5]=funktionens&populate[6]=zylinders&populate[7]=zylinders.objekttyps&populate[8]=zylinders.anlagentyps&populate[9]=zylinders.technologies&populate[10]=zylinders.qualitaets&populate[11]=zylinders.funktionens&pagination[pageSize]=100&publicationState=preview&sort=order:asc&_t=${Date.now()}`, 'Questions')
         ]);
+        
+        // Debug: Speichere API-Responses
+        debugData.apiResponses = {
+            objekttyp: { count: objekttypResponse?.data?.length || 0, sample: objekttypResponse?.data?.[0] },
+            anlagentyp: { count: anlagentypResponse?.data?.length || 0, sample: anlagentypResponse?.data?.[0] },
+            qualitaet: { count: qualitaetResponse?.data?.length || 0, sample: qualitaetResponse?.data?.[0] },
+            technologie: { count: technologieResponse?.data?.length || 0, sample: technologieResponse?.data?.[0] },
+            tueren: { count: tuerenResponse?.data?.length || 0, sample: tuerenResponse?.data?.[0] },
+            funktionen: { count: funktionenResponse?.data?.length || 0, sample: funktionenResponse?.data?.[0] },
+            questions: { count: questionsResponse?.data?.length || 0, sample: questionsResponse?.data?.[0] }
+        };
         
         console.log('📊 Content Types geladen:', {
             objekttyp: objekttypResponse?.data?.length || 0,
@@ -1098,6 +1140,11 @@ async function initializeQuestionnaire() {
 
         
         console.log('✅ Fragebogen erfolgreich initialisiert');
+        
+        // Debug: Initialisiere Debug-Panels
+        createDebugPanel();
+        createDebugToggle();
+        console.log('✅ Debug-System initialisiert');
 
     } catch (error) {
         console.error('❌ Fehler beim Initialisieren des Fragebogens:', error);
@@ -1371,6 +1418,11 @@ function renderCylinderFinder() {
     elements.navigationButtons.style.display = 'none';
     elements.subtitle.innerText = `Schritt 7 von 7: Wählen Sie Ihr Zylindersystem`;
     elements.progressBar.style.width = '100%';
+    
+    // Debug: Aktualisiere Debug-Panel wenn verfügbar
+    if (typeof updateDebugPanel === 'function') {
+        updateDebugPanel();
+    }
 
     if (!allCylinderSystems || allCylinderSystems.length === 0) {
         elements.contentContainer.innerHTML = `
@@ -1784,6 +1836,317 @@ elements.backToQuestionsBtn.addEventListener('click', initializeQuestionnaire);
 elements.functionModal.addEventListener('click', (e) => { if (e.target === elements.functionModal) closeFunctionModal(); });
 elements.modalCancelBtn.addEventListener('click', closeFunctionModal);
 elements.modalSaveBtn.addEventListener('click', saveFunctions);
+
+// --- DEBUG SYSTEM ---
+let debugMode = false;
+let debugData = {
+    apiResponses: {},
+    userAnswers: {},
+    cylinderMatchData: {},
+    rawData: {}
+};
+
+// Debug-Panel HTML erstellen
+function createDebugPanel() {
+    console.log('🔧 Erstelle Debug-Panel...');
+    const debugPanelContainer = document.createElement('div');
+    debugPanelContainer.id = 'debug-panel-container';
+    debugPanelContainer.innerHTML = `
+        <div id="debug-panel" class="fixed bottom-4 right-4 bg-gray-900 text-white rounded-lg shadow-2xl p-6 max-h-[80vh] overflow-y-auto min-w-[500px]" style="display: none; z-index: 9999;">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold">🐛 Debug Panel</h3>
+                <div>
+                    <button id="debug-copy-btn" class="bg-blue-500 hover:bg-blue-600 px-3 py-1 rounded text-sm mr-2">Copy All</button>
+                    <button id="debug-close-btn" class="bg-red-500 hover:bg-red-600 px-3 py-1 rounded text-sm">✕</button>
+                </div>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <h4 class="font-bold text-green-400 mb-2">User Answers:</h4>
+                    <pre id="debug-user-answers" class="bg-gray-800 p-2 rounded text-xs overflow-auto max-h-32"></pre>
+                </div>
+                <div>
+                    <h4 class="font-bold text-blue-400 mb-2">Cylinders Data:</h4>
+                    <pre id="debug-cylinders" class="bg-gray-800 p-2 rounded text-xs overflow-auto max-h-48"></pre>
+                </div>
+                <div>
+                    <h4 class="font-bold text-yellow-400 mb-2">Match Calculation:</h4>
+                    <pre id="debug-match-calculation" class="bg-gray-800 p-2 rounded text-xs overflow-auto max-h-64"></pre>
+                </div>
+                <div>
+                    <h4 class="font-bold text-purple-400 mb-2">API Responses:</h4>
+                    <pre id="debug-api-responses" class="bg-gray-800 p-2 rounded text-xs overflow-auto max-h-48"></pre>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(debugPanelContainer);
+    
+    const debugPanel = document.getElementById('debug-panel');
+    console.log('🔧 Debug-Panel-Element gefunden:', !!debugPanel);
+    
+    // Event Listeners
+    document.getElementById('debug-close-btn').addEventListener('click', () => {
+        debugPanel.style.display = 'none';
+    });
+    
+    document.getElementById('debug-copy-btn').addEventListener('click', () => {
+        const allData = {
+            userAnswers: debugData.userAnswers,
+            cylinderMatchData: debugData.cylinderMatchData,
+            apiResponses: debugData.apiResponses,
+            timestamp: new Date().toISOString()
+        };
+        navigator.clipboard.writeText(JSON.stringify(allData, null, 2));
+        alert('Debug data copied to clipboard!');
+    });
+    console.log('✅ Debug-Panel erstellt');
+}
+
+// Debug-Toggle Button erstellen
+function createDebugToggle() {
+    const toggle = document.createElement('button');
+    toggle.id = 'debug-toggle-btn';
+    toggle.className = 'fixed top-4 left-4 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+    toggle.innerHTML = '🐛 Debug';
+    toggle.onclick = () => {
+        const panel = document.getElementById('debug-panel');
+        if (panel) {
+            const currentDisplay = panel.style.display;
+            panel.style.display = currentDisplay === 'none' ? 'block' : 'none';
+            if (panel.style.display === 'block') {
+                updateDebugPanel();
+            }
+        } else {
+            console.error('Debug panel not found!');
+        }
+    };
+    document.body.appendChild(toggle);
+    console.log('✅ Debug Toggle Button erstellt');
+}
+
+// Debug-Panel aktualisieren
+function updateDebugPanel() {
+    console.log('🔄 Aktualisiere Debug-Panel...');
+    try {
+        const userAnswersEl = document.getElementById('debug-user-answers');
+        const apiResponsesEl = document.getElementById('debug-api-responses');
+        const cylindersEl = document.getElementById('debug-cylinders');
+        const matchCalcEl = document.getElementById('debug-match-calculation');
+        
+        if (userAnswersEl) {
+            userAnswersEl.textContent = JSON.stringify(debugData.userAnswers, null, 2);
+        }
+        
+        if (apiResponsesEl) {
+            apiResponsesEl.textContent = JSON.stringify(debugData.apiResponses, null, 2);
+        }
+        
+        // Zylinder-Daten (gekürzt)
+        const cylindersSummary = allCylinderSystems.map(cyl => ({
+            id: cyl.id,
+            name: cyl.name,
+            matchPercentage: cyl.matchPercentage,
+            isActive: cyl.isActive,
+            suitableObjectTypes: cyl.suitableObjectTypes?.length || 0,
+            suitableAnlagentyp: cyl.suitableAnlagentyp?.length || 0,
+            suitableQualitaet: cyl.suitableQualitaet?.length || 0,
+            suitableTechnologie: cyl.suitableTechnologie?.length || 0,
+            suitableFeatures: cyl.suitableFeatures?.length || 0
+        }));
+        
+        if (cylindersEl) {
+            cylindersEl.textContent = JSON.stringify(cylindersSummary, null, 2);
+        }
+        
+        // Match-Berechnung
+        if (matchCalcEl) {
+            matchCalcEl.textContent = JSON.stringify(debugData.cylinderMatchData, null, 2);
+        }
+        
+        console.log('✅ Debug-Panel aktualisiert');
+    } catch (error) {
+        console.error('❌ Fehler beim Aktualisieren des Debug-Panels:', error);
+    }
+}
+
+// Erweiterte Debug-Logik für Match-Berechnung
+function debugMatchCalculation(userAnswers, cylinder) {
+    const debugInfo = {
+        cylinderName: cylinder.name,
+        cylinderId: cylinder.id,
+        checks: []
+    };
+    
+    let matchCount = 0;
+    let totalChecks = 0;
+    
+    // Prüfe Objekttyp
+    if (userAnswers.objekttyp) {
+        totalChecks++;
+        const hasMatchingObjectType = cylinder.suitableObjectTypes.some(option => {
+            const isMatch = option.name === userAnswers.objekttyp || option.key === userAnswers.objekttyp;
+            debugInfo.checks.push({
+                check: 'objekttyp',
+                userValue: userAnswers.objekttyp,
+                cylinderValue: cylinder.suitableObjectTypes.map(o => o.name || o.key),
+                isMatch,
+                matchDetails: cylinder.suitableObjectTypes.map(o => ({
+                    name: o.name,
+                    key: o.key,
+                    matches: o.name === userAnswers.objekttyp || o.key === userAnswers.objekttyp
+                }))
+            });
+            return isMatch;
+        });
+        if (hasMatchingObjectType) matchCount++;
+    }
+    
+    // Prüfe Anlagentyp
+    if (userAnswers.anlagentyp) {
+        totalChecks++;
+        const hasMatchingAnlagentyp = cylinder.suitableAnlagentyp.some(option => {
+            const isMatch = option.name === userAnswers.anlagentyp || option.key === userAnswers.anlagentyp;
+            debugInfo.checks.push({
+                check: 'anlagentyp',
+                userValue: userAnswers.anlagentyp,
+                cylinderValue: cylinder.suitableAnlagentyp.map(o => o.name || o.key),
+                isMatch,
+                matchDetails: cylinder.suitableAnlagentyp.map(o => ({
+                    name: o.name,
+                    key: o.key,
+                    matches: o.name === userAnswers.anlagentyp || o.key === userAnswers.anlagentyp
+                }))
+            });
+            return isMatch;
+        });
+        if (hasMatchingAnlagentyp) matchCount++;
+    }
+    
+    // Prüfe Qualität
+    if (userAnswers.qualitaet) {
+        totalChecks++;
+        const hasMatchingQualitaet = cylinder.suitableQualitaet.some(option => {
+            const isMatch = option.name === userAnswers.qualitaet || option.key === userAnswers.qualitaet;
+            debugInfo.checks.push({
+                check: 'qualitaet',
+                userValue: userAnswers.qualitaet,
+                cylinderValue: cylinder.suitableQualitaet.map(o => o.name || o.key),
+                isMatch,
+                matchDetails: cylinder.suitableQualitaet.map(o => ({
+                    name: o.name,
+                    key: o.key,
+                    matches: o.name === userAnswers.qualitaet || o.key === userAnswers.qualitaet
+                }))
+            });
+            return isMatch;
+        });
+        if (hasMatchingQualitaet) matchCount++;
+    }
+    
+    // Prüfe Technologie
+    if (userAnswers.technologie) {
+        totalChecks++;
+        const hasMatchingTechnologie = cylinder.suitableTechnologie.some(option => {
+            const isMatch = option.name === userAnswers.technologie || option.key === userAnswers.technologie;
+            debugInfo.checks.push({
+                check: 'technologie',
+                userValue: userAnswers.technologie,
+                cylinderValue: cylinder.suitableTechnologie.map(o => o.name || o.key),
+                isMatch,
+                matchDetails: cylinder.suitableTechnologie.map(o => ({
+                    name: o.name,
+                    key: o.key,
+                    matches: o.name === userAnswers.technologie || o.key === userAnswers.technologie
+                }))
+            });
+            return isMatch;
+        });
+        if (hasMatchingTechnologie) matchCount++;
+    }
+    
+        // Prüfe Türen
+        if (userAnswers.tueren && userAnswers.tueren.length > 0) {
+            const matchingTueren = [];
+            // WENN Zylinder hat keine suitableTueren definiert, zähle es als Match (flexibel)
+            const hasNoTuerenRestriction = !cylinder.suitableTueren || cylinder.suitableTueren.length === 0;
+            
+            userAnswers.tueren.forEach(selectedTuer => {
+                totalChecks++;
+                let matches = false;
+                
+                if (hasNoTuerenRestriction) {
+                    // Keine Einschränkung = Match
+                    matches = true;
+                    matchingTueren.push(selectedTuer);
+                    matchCount++;
+                } else {
+                    // Prüfe gegen die Einschränkungen
+                    matches = cylinder.suitableTueren?.some(option => 
+                        option.name === selectedTuer || option.key === selectedTuer
+                    );
+                    if (matches) {
+                        matchingTueren.push(selectedTuer);
+                        matchCount++;
+                    }
+                }
+            });
+            debugInfo.checks.push({
+                check: 'tueren',
+                userValue: userAnswers.tueren,
+                cylinderValue: cylinder.suitableTueren?.map(o => o.name || o.key) || [],
+                hasNoRestriction: hasNoTuerenRestriction,
+                matchCount: matchingTueren.length,
+                totalTueren: userAnswers.tueren.length,
+                matchingTueren
+            });
+        }
+    
+    // Prüfe Funktionen
+    if (userAnswers.funktionen && userAnswers.funktionen.length > 0) {
+        const matchingFeatures = [];
+        // WENN Zylinder hat keine suitableFeatures definiert, zähle es als Match (flexibel)
+        const hasNoFeaturesRestriction = !cylinder.suitableFeatures || cylinder.suitableFeatures.length === 0;
+        
+        userAnswers.funktionen.forEach(selectedFeature => {
+            totalChecks++;
+            let matches = false;
+            
+            if (hasNoFeaturesRestriction) {
+                // Keine Einschränkung = Match
+                matches = true;
+                matchingFeatures.push(selectedFeature);
+                matchCount++;
+            } else {
+                // Prüfe gegen die Einschränkungen
+                matches = cylinder.suitableFeatures.some(option => 
+                    option.name === selectedFeature || option.key === selectedFeature
+                );
+                if (matches) {
+                    matchingFeatures.push(selectedFeature);
+                    matchCount++;
+                }
+            }
+        });
+        debugInfo.checks.push({
+            check: 'funktionen',
+            userValue: userAnswers.funktionen,
+            cylinderValue: cylinder.suitableFeatures?.map(o => o.name || o.key || o.optionText || o.text) || [],
+            hasNoRestriction: hasNoFeaturesRestriction,
+            matchCount: matchingFeatures.length,
+            totalFeatures: userAnswers.funktionen.length,
+            matchingFeatures
+        });
+    }
+    
+    debugInfo.summary = {
+        matchCount,
+        totalChecks,
+        matchPercentage: totalChecks > 0 ? Math.round((matchCount / totalChecks) * 100) : 0
+    };
+    
+    return debugInfo;
+}
 
 // --- INITIALIZATION ---
 // Warte bis DOM geladen ist

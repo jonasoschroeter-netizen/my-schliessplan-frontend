@@ -275,3 +275,15 @@ select:focus {
 .row-elektronisch {
     background-color: #e0f2fe;
 }
+
+/* Debug Panel Styles */
+#debug-panel {
+    z-index: 9999;
+}
+
+#debug-panel pre {
+    font-family: 'Courier New', monospace;
+    line-height: 1.4;
+    max-height: 200px;
+    overflow: auto;
+}
