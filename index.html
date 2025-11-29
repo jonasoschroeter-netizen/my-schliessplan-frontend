@@ -8,6 +8,31 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <link rel="stylesheet" href="style.css">
+    <!-- Supabase Client - wird asynchron geladen, blockiert die Seite nicht -->
+    <script>
+        // Supabase wird erst nach DOM-Load geladen
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // Dynamisch Supabase importieren
+                const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+                
+                // Supabase Credentials
+                const SUPABASE_URL = 'https://gffecqdaybyhhdfkkyqi.supabase.co';
+                const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmZmVjcWRheWJ5aGhkZmtreXFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDY5NDYsImV4cCI6MjA3NzA4Mjk0Nn0.7iZ5UY2mSepEAhtPKlQ71JdIzmsLGzgU3RvmEJxzln4';
+                
+                // Supabase Client erstellen und global verfügbar machen
+                window.supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                console.log('✅ Supabase Client geladen');
+                
+                // Trigger event für script.js
+                window.dispatchEvent(new CustomEvent('supabase-ready'));
+            } catch (error) {
+                console.error('❌ Fehler beim Laden von Supabase:', error);
+                console.warn('⚠️ Seite funktioniert weiterhin, aber Speichern wird nicht funktionieren');
+                window.supabaseClient = null;
+            }
+        });
+    </script>
 </head>
 <body class="flex items-center justify-center min-h-screen p-4">
     <div class="w-full max-w-7xl mx-auto bg-white rounded-2xl shadow-xl p-6 md:p-10">
@@ -35,7 +60,12 @@
         <div id="schliessplan-container" class="hidden">
             <div class="flex justify-between items-center mb-4">
                 <h1 class="text-3xl font-bold text-gray-800">Ihr persönlicher Schließplan</h1>
-                <button id="back-to-questions-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg flex items-center"><i class="fas fa-pencil-alt mr-2"></i> Konfiguration bearbeiten</button>
+                <div class="flex gap-3">
+                    <button id="export-html-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center transition-colors">
+                        <i class="fas fa-file-code mr-2"></i> Als HTML exportieren
+                    </button>
+                    <button id="back-to-questions-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg flex items-center"><i class="fas fa-pencil-alt mr-2"></i> Konfiguration bearbeiten</button>
+                </div>
             </div>
             <div id="color-legend" class="flex justify-end items-center gap-4 mb-4 text-sm">
                 <span class="font-semibold">Legende:</span>
@@ -73,6 +103,44 @@
             <div class="flex justify-between mt-6">
                 <div><button id="add-row-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i class="fas fa-plus mr-2"></i> Zeile hinzufügen</button></div>
                 <div><button id="add-key-btn" class="bg-[#2a95c3] hover:bg-[#22779a] text-white font-bold py-2 px-4 rounded-lg flex items-center"><i class="fas fa-key mr-2"></i> Schlüsselgruppe hinzufügen</button></div>
+            </div>
+
+            <!-- Kunden-Daten Formular -->
+            <div id="customer-form-container" class="mt-8 p-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                <h3 class="text-xl font-semibold text-gray-800 mb-4">
+                    <i class="fas fa-user mr-2"></i>Ihre Kontaktdaten
+                </h3>
+                <p class="text-gray-600 mb-4">Geben Sie Ihre Daten ein, um den Schließplan zu speichern:</p>
+                
+                <form id="customer-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Vorname *</label>
+                        <input type="text" id="customer-vorname" class="input-cell w-full" placeholder="Max" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Nachname *</label>
+                        <input type="text" id="customer-nachname" class="input-cell w-full" placeholder="Mustermann" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">E-Mail *</label>
+                        <input type="email" id="customer-email" class="input-cell w-full" placeholder="max@example.com" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Telefon (optional)</label>
+                        <input type="tel" id="customer-telefon" class="input-cell w-full" placeholder="0123456789">
+                    </div>
+                </form>
+                
+                <div class="mt-6 flex justify-end gap-4">
+                    <button type="button" onclick="skipCustomerForm()" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">
+                        Überspringen
+                    </button>
+                    <button type="submit" form="customer-form" id="save-plan-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg flex items-center">
+                        <i class="fas fa-save mr-2"></i>Schließplan speichern
+                    </button>
+                </div>
+                
+                <div id="save-status" class="mt-4 hidden"></div>
             </div>
         </div>
 

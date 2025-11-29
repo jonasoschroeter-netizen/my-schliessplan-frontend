@@ -11,6 +11,55 @@ const STRAPI_BASE_URL = 'https://brave-basketball-98ec57b285.strapiapp.com'; // 
 // Cache-Busting Konfiguration
 const CACHE_BUSTING = true; // Aktiviert Cache-Busting für alle API-Aufrufe
 
+// --- SUPABASE CONFIGURATION ---
+// Supabase Client wird in index.html als ES Module geladen und als window.supabaseClient verfügbar gemacht
+
+// Supabase Client Variable (wird vom ES Module in index.html gesetzt)
+let supabase = null;
+
+// Initialisiere Supabase Client (wird nach DOM-Load aufgerufen)
+function initializeSupabase() {
+    try {
+        // Prüfe ob Supabase Client bereits geladen wurde (vom ES Module)
+        if (typeof window.supabaseClient !== 'undefined' && window.supabaseClient !== null) {
+            supabase = window.supabaseClient;
+            console.log('✅ Supabase Client initialisiert');
+            return true;
+        } else {
+            // Warte auf Event oder versuche es erneut
+            const checkSupabase = () => {
+                if (typeof window.supabaseClient !== 'undefined' && window.supabaseClient !== null) {
+                    supabase = window.supabaseClient;
+                    console.log('✅ Supabase Client initialisiert');
+                    return true;
+                }
+                return false;
+            };
+            
+            // Event Listener für supabase-ready Event
+            window.addEventListener('supabase-ready', () => {
+                if (checkSupabase()) {
+                    console.log('✅ Supabase Client über Event initialisiert');
+                }
+            });
+            
+            // Fallback: Versuche es nach kurzer Verzögerung
+            setTimeout(() => {
+                if (!checkSupabase()) {
+                    console.warn('⚠️ Supabase Client nicht verfügbar - Speichern wird nicht funktionieren');
+                    supabase = null;
+                }
+            }, 1000);
+            
+            return false;
+        }
+    } catch (error) {
+        console.error('❌ Fehler bei Supabase Initialisierung:', error);
+        supabase = null;
+        return false;
+    }
+}
+
 let allCylinderSystems = [];
 let questionsData = [];
 let allDoorOptionsForPlan = [];
@@ -1827,15 +1876,564 @@ function saveFunctions() {
     renderPlan();
 }
 
+// --- CRM FUNKTIONEN ---
+
+function isValidEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+}
+
+function showSaveStatus(type, message) {
+    const statusDiv = document.getElementById('save-status');
+    if (!statusDiv) return;
+    
+    statusDiv.className = 'mt-4 p-4 rounded-lg';
+    statusDiv.classList.remove('hidden');
+    
+    if (type === 'success') {
+        statusDiv.className += ' bg-green-100 text-green-800 border border-green-300';
+        statusDiv.innerHTML = `<i class="fas fa-check-circle mr-2"></i>${message}`;
+    } else if (type === 'error') {
+        statusDiv.className += ' bg-red-100 text-red-800 border border-red-300';
+        statusDiv.innerHTML = `<i class="fas fa-exclamation-circle mr-2"></i>${message}`;
+    } else if (type === 'loading') {
+        statusDiv.className += ' bg-blue-100 text-blue-800 border border-blue-300';
+        statusDiv.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>${message}`;
+    }
+}
+
+async function findOrCreateKunde(email, vorname, nachname, telefon) {
+    if (!supabase) {
+        throw new Error('Supabase Client nicht initialisiert');
+    }
+
+    try {
+        // 1. Prüfe ob Kunde existiert
+        const { data: existingKunde, error: searchError } = await supabase
+            .from('kunden')
+            .select('id, kundenummer')
+            .eq('email', email.toLowerCase().trim())
+            .single();
+        
+        if (existingKunde) {
+            // Kunde existiert bereits - aktualisiere Daten
+            const { error: updateError } = await supabase
+                .from('kunden')
+                .update({
+                    vorname: vorname || existingKunde.vorname,
+                    nachname: nachname || existingKunde.nachname,
+                    telefon: telefon || null,
+                    aktualisiert_am: new Date().toISOString()
+                })
+                .eq('id', existingKunde.id);
+            
+            if (updateError) {
+                console.error('Fehler beim Aktualisieren des Kunden:', updateError);
+            }
+            
+            console.log('✅ Kunde gefunden:', existingKunde.kundenummer);
+            return existingKunde.id;
+        }
+        
+        // 2. Erstelle neuen Kunden (Kundenummer wird automatisch generiert)
+        // Verwende die find_or_create_kunde Funktion aus Supabase
+        const { data: kundeId, error: rpcError } = await supabase.rpc('find_or_create_kunde', {
+            p_email: email,
+            p_vorname: vorname,
+            p_nachname: nachname,
+            p_telefon: telefon || null
+        });
+        
+        if (rpcError) {
+            // Fallback: Direkt einfügen (Kundenummer muss dann über Trigger generiert werden)
+            console.warn('RPC-Funktion nicht verfügbar, verwende direkten Insert:', rpcError);
+            
+            // Hole nächste Kundenummer (temporär, bis Trigger funktioniert)
+            const { data: newKunde, error: createError } = await supabase
+                .from('kunden')
+                .insert([{
+                    email: email.toLowerCase().trim(),
+                    vorname: vorname,
+                    nachname: nachname,
+                    telefon: telefon || null,
+                    status: 'aktiv',
+                    kundenummer: 'KD-' + new Date().getFullYear() + '-' + Date.now().toString().slice(-5)
+                }])
+                .select()
+                .single();
+            
+            if (createError) {
+                throw new Error(`Fehler beim Erstellen des Kunden: ${createError.message}`);
+            }
+            
+            console.log('✅ Neuer Kunde erstellt:', newKunde.kundenummer);
+            return newKunde.id;
+        }
+        
+        // Hole Kundenummer für Anzeige
+        const { data: kundeData } = await supabase
+            .from('kunden')
+            .select('kundenummer')
+            .eq('id', kundeId)
+            .single();
+        
+        console.log('✅ Kunde erstellt/gefunden:', kundeData?.kundenummer);
+        return kundeId;
+        
+    } catch (error) {
+        console.error('Fehler in findOrCreateKunde:', error);
+        throw error;
+    }
+}
+
+async function savePlanToCRM() {
+    // 1. Formular-Daten sammeln
+    const vorname = document.getElementById('customer-vorname')?.value.trim();
+    const nachname = document.getElementById('customer-nachname')?.value.trim();
+    const email = document.getElementById('customer-email')?.value.trim();
+    const telefon = document.getElementById('customer-telefon')?.value.trim();
+    
+    // Validierung
+    if (!email || !vorname || !nachname) {
+        showSaveStatus('error', 'Bitte füllen Sie alle Pflichtfelder aus.');
+        return;
+    }
+    
+    if (!isValidEmail(email)) {
+        showSaveStatus('error', 'Bitte geben Sie eine gültige E-Mail-Adresse ein.');
+        return;
+    }
+    
+    // 2. Speichern starten
+    showSaveStatus('loading', 'Schließplan wird gespeichert...');
+    const saveBtn = document.getElementById('save-plan-btn');
+    if (saveBtn) saveBtn.disabled = true;
+    
+    try {
+        if (!supabase) {
+            throw new Error('Supabase Client nicht initialisiert. Bitte laden Sie die Seite neu.');
+        }
+        
+        // 3. Kunde finden oder erstellen
+        const kundeId = await findOrCreateKunde(email, vorname, nachname, telefon);
+        
+        // Hole Kundenummer für Anzeige
+        const { data: kundeInfo } = await supabase
+            .from('kunden')
+            .select('kundenummer')
+            .eq('id', kundeId)
+            .single();
+        
+        // 4. Schließplan speichern
+        const selectedSystem = allCylinderSystems.find(s => s.id === userAnswers.cylinderSystemId);
+        
+        const schliessplanData = {
+            kunde_id: kundeId,
+            name: `${userAnswers.objekttyp || 'Schließplan'} - ${new Date().toLocaleDateString('de-DE')}`,
+            objekttyp: userAnswers.objekttyp,
+            anlagentyp: userAnswers.anlagentyp,
+            qualitaet: userAnswers.qualitaet,
+            technologie: userAnswers.technologie,
+            zylinder_system_id: userAnswers.cylinderSystemId,
+            zylinder_system_name: selectedSystem?.name,
+            plan_data: planData,
+            user_answers: userAnswers,
+            status: 'erstellt'
+        };
+        
+        const { data: planDataResult, error: planError } = await supabase
+            .from('schliessplaene')
+            .insert([schliessplanData])
+            .select()
+            .single();
+        
+        if (planError) {
+            throw new Error(`Fehler beim Speichern des Schließplans: ${planError.message}`);
+        }
+        
+        console.log('✅ Schließplan gespeichert:', planDataResult);
+        
+        // 5. Erfolgsmeldung
+        const kundenummer = kundeInfo?.kundenummer || 'Wird generiert...';
+        showSaveStatus('success', `Schließplan erfolgreich gespeichert! ${kundenummer ? 'Kundenummer: ' + kundenummer : ''}`);
+        
+        // Optional: Weiterleitung oder Dialog
+        setTimeout(() => {
+            alert(`Vielen Dank, ${vorname}! Ihr Schließplan wurde gespeichert.${kundenummer ? ' Ihre Kundenummer: ' + kundenummer : ''}`);
+        }, 1000);
+        
+    } catch (error) {
+        console.error('❌ Fehler beim Speichern:', error);
+        showSaveStatus('error', `Fehler: ${error.message}`);
+        
+        // Detaillierte Fehlerinformationen in Console
+        if (error.message.includes('RLS')) {
+            console.error('💡 Hinweis: Prüfen Sie die Row Level Security Policies in Supabase');
+        }
+    } finally {
+        if (saveBtn) saveBtn.disabled = false;
+    }
+}
+
+function skipCustomerForm() {
+    if (confirm('Möchten Sie wirklich ohne Speichern fortfahren? Der Schließplan geht verloren.')) {
+        console.log('Schließplan wurde nicht gespeichert');
+        // Optional: Als PDF exportieren oder anderweitig speichern
+    }
+}
+
+// --- HTML EXPORT FUNKTION ---
+function exportSchliessplanToHTML() {
+    try {
+        // Button während des Exports deaktivieren
+        const exportBtn = document.getElementById('export-html-btn');
+        const originalText = exportBtn.innerHTML;
+        exportBtn.disabled = true;
+        exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> HTML wird erstellt...';
+
+        // Prüfe ob planData vorhanden ist
+        if (!planData || !planData.rows || planData.rows.length === 0) {
+            alert('Keine Daten zum Exportieren vorhanden. Bitte erstellen Sie zuerst einen Schließplan.');
+            exportBtn.disabled = false;
+            exportBtn.innerHTML = originalText;
+            return;
+        }
+
+        // Hole aktuelle Werte aus den Eingabefeldern (direkt aus dem DOM)
+        const rows = planData.rows.map(row => {
+            const rowElement = document.querySelector(`tr[data-row-id="${row.id}"]`);
+            if (rowElement) {
+                // Lese alle aktuellen Werte aus den Eingabefeldern
+                const cells = rowElement.querySelectorAll('td');
+                
+                // Zylindertyp aus Select
+                const typSelect = rowElement.querySelector('select[onchange*="typ"]');
+                if (typSelect) row.typ = typSelect.value;
+                
+                // System aus Select
+                const systemSelect = rowElement.querySelector('select[onchange*="systemId"]');
+                if (systemSelect) row.systemId = parseInt(systemSelect.value) || row.systemId;
+                
+                // Technologie aus Select
+                const techSelect = rowElement.querySelector('select[onchange*="techType"]');
+                if (techSelect) row.techType = techSelect.value;
+                
+                // Maße A/I aus Inputs
+                const massInputs = rowElement.querySelectorAll('input[onchange*="mass"]');
+                massInputs.forEach(input => {
+                    const onChangeStr = input.getAttribute('onchange') || '';
+                    if (onChangeStr.includes('massA')) row.massA = input.value || row.massA;
+                    if (onChangeStr.includes('massI')) row.massI = input.value || row.massI;
+                });
+                
+                // Anzahl aus Input
+                const anzahlInput = rowElement.querySelector('input[type="number"]');
+                if (anzahlInput) row.anzahl = parseInt(anzahlInput.value) || row.anzahl;
+                
+                // Türbezeichnung (kann auch ein Input sein)
+                const tuerInput = rowElement.querySelector('input[placeholder*="Bezeichnung"]');
+                if (tuerInput && tuerInput.value) row.tuer = tuerInput.value;
+                
+                // Schlüsselmatrix aus Checkbox-Zellen
+                const matrixCells = rowElement.querySelectorAll('.schliessmatrix-cell');
+                if (matrixCells.length > 0) {
+                    row.matrix = Array.from(matrixCells).map(cell => cell.classList.contains('checked'));
+                }
+            }
+            return row;
+        });
+
+        // Hole System-Namen
+        const getSystemName = (systemId) => {
+            const system = allCylinderSystems.find(s => s.id === systemId);
+            return system ? system.name : 'Unbekannt';
+        };
+
+        // Hole Funktion-Namen
+        const getFunctionNames = (funktionen) => {
+            return Object.keys(funktionen)
+                .filter(key => funktionen[key])
+                .map(key => ALL_FEATURES[key] ? ALL_FEATURES[key].name : key)
+                .join(', ');
+        };
+
+        // Prüfe ob gemischtes System
+        const isMixedSystem = userAnswers.technologie === 'Gemischte Anlage';
+
+        // Baue HTML-Tabelle
+        let tableRows = '';
+        rows.forEach(row => {
+            const systemName = getSystemName(row.systemId);
+            const functionNames = getFunctionNames(row.funktionen);
+            const techType = row.techType || 'mechanisch';
+            const bgColor = techType === 'elektronisch' ? '#e0f2fe' : 'transparent';
+
+            // Schlüsselmatrix
+            let matrixCells = '';
+            planData.keys.forEach((key, keyIndex) => {
+                const checked = row.matrix && row.matrix[keyIndex] ? '✓' : '';
+                matrixCells += `<td style="border: 1px solid #ccc; text-align: center; padding: 8px;">${checked}</td>`;
+            });
+
+            // Technologie-Spalte nur bei gemischtem System
+            const techCell = isMixedSystem ? 
+                `<td style="border: 1px solid #ccc; padding: 8px; background-color: ${bgColor};">${techType === 'elektronisch' ? 'Elektronisch' : 'Mechanisch'}</td>` : 
+                '';
+
+            tableRows += `
+                <tr style="background-color: ${bgColor};">
+                    <td style="border: 1px solid #ccc; padding: 8px; font-weight: bold; text-align: center;">${row.pos}</td>
+                    <td style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">${row.tuer || ''}</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">${row.typ || ''}</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">${systemName}</td>
+                    ${techCell}
+                    <td style="border: 1px solid #ccc; padding: 8px; text-align: center;">${row.massA || ''}/${row.massI || ''}</td>
+                    <td style="border: 1px solid #ccc; padding: 8px; text-align: center;">${row.anzahl || 1}</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">${functionNames || '-'}</td>
+                    <td style="border: 1px solid #ccc; padding: 8px; background-color: #f5f5f5; font-weight: bold;">${row.tuer || ''}</td>
+                    ${matrixCells}
+                </tr>
+            `;
+        });
+
+        // Aktualisiere Schlüsselgruppen-Namen aus dem DOM (falls geändert)
+        const keyInputs = document.querySelectorAll('#schluessel-header-dynamic input');
+        if (keyInputs.length > 0) {
+            keyInputs.forEach((input, index) => {
+                if (planData.keys[index] && input.value) {
+                    planData.keys[index].name = input.value;
+                }
+            });
+        }
+        
+        // Header für Schlüsselgruppen
+        let keyHeaders = '';
+        planData.keys.forEach(key => {
+            keyHeaders += `<th style="border: 1px solid #ccc; padding: 8px; background-color: #1a3d5c; color: white; transform: rotate(-90deg); white-space: nowrap; min-width: 50px; height: 150px;">${key.name}</th>`;
+        });
+
+        // HTML-Dokument erstellen
+        const htmlContent = `<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schließplan Export</title>
+    <style>
+        body {
+            font-family: 'Inter', Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #1a3d5c;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+        .info-box {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #1a3d5c;
+        }
+        .info-box p {
+            margin: 5px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 12px;
+        }
+        th {
+            background-color: #1a3d5c;
+            color: white;
+            padding: 10px 8px;
+            text-align: center;
+            border: 1px solid #ccc;
+            font-weight: bold;
+        }
+        .header-main {
+            background-color: #2a4d6c;
+            font-size: 14px;
+            padding: 12px;
+        }
+        td {
+            border: 1px solid #ccc;
+            padding: 8px;
+        }
+        .legend {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+        }
+        .legend-item {
+            display: inline-block;
+            margin-right: 20px;
+        }
+        .legend-color {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ccc;
+            vertical-align: middle;
+            margin-right: 5px;
+        }
+        .legend-color.elektronisch {
+            background-color: #e0f2fe;
+        }
+        @media print {
+            body {
+                background-color: white;
+                margin: 0;
+            }
+            .container {
+                box-shadow: none;
+                padding: 10px;
+            }
+            .info-box {
+                page-break-inside: avoid;
+            }
+            table {
+                page-break-inside: auto;
+            }
+            tr {
+                page-break-inside: avoid;
+                page-break-after: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Ihr persönlicher Schließplan</h1>
+        
+        <div class="info-box">
+            <p><strong>Erstellt am:</strong> ${new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+            ${userAnswers.objekttyp ? `<p><strong>Objekttyp:</strong> ${userAnswers.objekttyp}</p>` : ''}
+            ${userAnswers.anlagentyp ? `<p><strong>Anlagentyp:</strong> ${userAnswers.anlagentyp}</p>` : ''}
+            ${userAnswers.qualitaet ? `<p><strong>Qualität:</strong> ${userAnswers.qualitaet}</p>` : ''}
+            ${userAnswers.technologie ? `<p><strong>Technologie:</strong> ${userAnswers.technologie}</p>` : ''}
+        </div>
+
+        ${isMixedSystem ? `
+        <div class="legend">
+            <strong>Legende:</strong>
+            <span class="legend-item"><span class="legend-color"></span>Mechanisch</span>
+            <span class="legend-item"><span class="legend-color elektronisch"></span>Elektronisch</span>
+        </div>
+        ` : ''}
+
+        <table>
+            <thead>
+                <tr>
+                    <th colspan="${isMixedSystem ? '8' : '7'}" class="header-main">Schließzylinder</th>
+                    <td style="border: none; background-color: #ddd;"></td>
+                    <th colspan="${planData.keys.length + 1}" class="header-main">Schlüsselmatrix</th>
+                </tr>
+                <tr>
+                    <th>POS</th>
+                    <th>Türbezeichnung</th>
+                    <th>Zylindertyp</th>
+                    <th>System</th>
+                    ${isMixedSystem ? '<th>Technologie</th>' : ''}
+                    <th>Maße A/I</th>
+                    <th>Anzahl</th>
+                    <th>Funktionen</th>
+                    <td style="border: none; background-color: #ddd;"></td>
+                    <th>Schlüsselgruppen</th>
+                    ${keyHeaders}
+                </tr>
+            </thead>
+            <tbody>
+                ${tableRows}
+            </tbody>
+        </table>
+
+        <div style="margin-top: 30px; padding: 15px; background-color: #f9f9f9; border-radius: 5px;">
+            <p><strong>Hinweis:</strong> Sie können diese Seite als PDF speichern, indem Sie Strg+P (Windows) oder Cmd+P (Mac) drücken und "Als PDF speichern" wählen.</p>
+        </div>
+    </div>
+</body>
+</html>`;
+
+        // Erstelle Blob und Download
+        const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Schließplan_${new Date().toISOString().split('T')[0]}.html`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        // Button wieder aktivieren
+        exportBtn.disabled = false;
+        exportBtn.innerHTML = originalText;
+
+        // Erfolgsmeldung
+        showSaveStatus('success', 'HTML erfolgreich erstellt und heruntergeladen! Öffnen Sie die Datei im Browser und drucken Sie sie als PDF (Strg+P).');
+
+    } catch (error) {
+        console.error('Fehler beim HTML-Export:', error);
+        alert('Fehler beim Erstellen des HTML-Exports: ' + error.message);
+        
+        // Button wieder aktivieren
+        const exportBtn = document.getElementById('export-html-btn');
+        if (exportBtn) {
+            exportBtn.disabled = false;
+            exportBtn.innerHTML = '<i class="fas fa-file-code mr-2"></i> Als HTML exportieren';
+        }
+    }
+}
+
 // --- EVENT LISTENERS ---
 elements.nextBtn.addEventListener('click', handleNext);
 elements.prevBtn.addEventListener('click', handlePrev);
 elements.addRowBtn.addEventListener('click', addSchliessplanRow);
 elements.addKeyBtn.addEventListener('click', addKeyColumn);
-elements.backToQuestionsBtn.addEventListener('click', initializeQuestionnaire); 
+elements.backToQuestionsBtn.addEventListener('click', initializeQuestionnaire);
+
+// PDF-Export Button Event Listener
+// Wird nach DOM-Load in initializeQuestionnaire registriert 
 elements.functionModal.addEventListener('click', (e) => { if (e.target === elements.functionModal) closeFunctionModal(); });
 elements.modalCancelBtn.addEventListener('click', closeFunctionModal);
 elements.modalSaveBtn.addEventListener('click', saveFunctions);
+
+// CRM Form Submit
+const customerForm = document.getElementById('customer-form');
+if (customerForm) {
+    customerForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await savePlanToCRM();
+    });
+}
+
+// HTML-Export Button Event Listener
+document.addEventListener('DOMContentLoaded', () => {
+    const exportHtmlBtn = document.getElementById('export-html-btn');
+    if (exportHtmlBtn) {
+        exportHtmlBtn.addEventListener('click', exportSchliessplanToHTML);
+    }
+});
+
+// Auch nach DOM-Load registrieren, falls DOM bereits geladen ist
+const exportHtmlBtn = document.getElementById('export-html-btn');
+if (exportHtmlBtn) {
+    exportHtmlBtn.addEventListener('click', exportSchliessplanToHTML);
+}
 
 // --- DEBUG SYSTEM ---
 let debugMode = false;
@@ -2151,7 +2749,11 @@ function debugMatchCalculation(userAnswers, cylinder) {
 // --- INITIALIZATION ---
 // Warte bis DOM geladen ist
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeQuestionnaire);
+    document.addEventListener('DOMContentLoaded', () => {
+        initializeSupabase(); // Supabase initialisieren
+        initializeQuestionnaire(); // Fragebogen initialisieren
+    });
 } else {
-initializeQuestionnaire();
+    initializeSupabase(); // Supabase initialisieren
+    initializeQuestionnaire(); // Fragebogen initialisieren
 }
