@@ -16,49 +16,222 @@ const CACHE_BUSTING = true; // Aktiviert Cache-Busting für alle API-Aufrufe
 
 // Supabase Client Variable (wird vom ES Module in index.html gesetzt)
 let supabase = null;
+let supabaseInitialized = false;
+let supabaseReadyPromise = null;
+
+// Promise-basierte Supabase Initialisierung - wartet garantiert bis Client geladen ist
+function waitForSupabase() {
+    if (supabaseReadyPromise) {
+        return supabaseReadyPromise;
+    }
+    
+    supabaseReadyPromise = new Promise((resolve, reject) => {
+        // Prüfe sofort ob bereits geladen
+        if (typeof window.supabaseClient !== 'undefined' && window.supabaseClient !== null) {
+            supabase = window.supabaseClient;
+            supabaseInitialized = true;
+            console.log('✅ Supabase Client bereits geladen');
+            resolve(supabase);
+            return;
+        }
+        
+        // Event Listener für supabase-ready Event
+        const onReady = () => {
+            if (typeof window.supabaseClient !== 'undefined' && window.supabaseClient !== null) {
+                supabase = window.supabaseClient;
+                supabaseInitialized = true;
+                console.log('✅ Supabase Client über Event initialisiert');
+                window.removeEventListener('supabase-ready', onReady);
+                resolve(supabase);
+            }
+        };
+        
+        window.addEventListener('supabase-ready', onReady);
+        
+        // Fallback: Polling falls Event nicht kommt (max 5 Sekunden)
+        let attempts = 0;
+        const maxAttempts = 50; // 50 * 100ms = 5 Sekunden
+        const checkInterval = setInterval(() => {
+            attempts++;
+            if (typeof window.supabaseClient !== 'undefined' && window.supabaseClient !== null) {
+                supabase = window.supabaseClient;
+                supabaseInitialized = true;
+                console.log('✅ Supabase Client über Polling initialisiert');
+                window.removeEventListener('supabase-ready', onReady);
+                clearInterval(checkInterval);
+                resolve(supabase);
+            } else if (attempts >= maxAttempts) {
+                console.error('❌ Supabase Client konnte nicht geladen werden (Timeout)');
+                window.removeEventListener('supabase-ready', onReady);
+                clearInterval(checkInterval);
+                reject(new Error('Supabase Client konnte nicht geladen werden'));
+            }
+        }, 100);
+    });
+    
+    return supabaseReadyPromise;
+}
 
 // Initialisiere Supabase Client (wird nach DOM-Load aufgerufen)
 function initializeSupabase() {
+    // Starte das Warten auf Supabase
+    waitForSupabase()
+        .then(() => {
+            console.log('✅ Supabase Client erfolgreich initialisiert');
+        })
+        .catch((error) => {
+            console.error('❌ Fehler bei Supabase Initialisierung:', error);
+            supabase = null;
+            supabaseInitialized = false;
+        });
+}
+
+// Hilfsfunktion: Stelle sicher, dass Supabase geladen ist
+async function ensureSupabaseReady() {
+    if (supabaseInitialized && supabase) {
+        return supabase;
+    }
+    
     try {
-        // Prüfe ob Supabase Client bereits geladen wurde (vom ES Module)
-        if (typeof window.supabaseClient !== 'undefined' && window.supabaseClient !== null) {
-            supabase = window.supabaseClient;
-            console.log('✅ Supabase Client initialisiert');
-            return true;
-        } else {
-            // Warte auf Event oder versuche es erneut
-            const checkSupabase = () => {
-                if (typeof window.supabaseClient !== 'undefined' && window.supabaseClient !== null) {
-                    supabase = window.supabaseClient;
-                    console.log('✅ Supabase Client initialisiert');
-                    return true;
-                }
-                return false;
-            };
-            
-            // Event Listener für supabase-ready Event
-            window.addEventListener('supabase-ready', () => {
-                if (checkSupabase()) {
-                    console.log('✅ Supabase Client über Event initialisiert');
-                }
-            });
-            
-            // Fallback: Versuche es nach kurzer Verzögerung
-            setTimeout(() => {
-                if (!checkSupabase()) {
-                    console.warn('⚠️ Supabase Client nicht verfügbar - Speichern wird nicht funktionieren');
-                    supabase = null;
-                }
-            }, 1000);
-            
-            return false;
-        }
+        await waitForSupabase();
+        return supabase;
     } catch (error) {
-        console.error('❌ Fehler bei Supabase Initialisierung:', error);
-        supabase = null;
-        return false;
+        throw new Error('Supabase Client konnte nicht initialisiert werden. Bitte laden Sie die Seite neu.');
     }
 }
+
+// --- LOADING SCREEN VERWALTUNG ---
+const loadingStatus = {
+    items: {},
+    totalSteps: 0,
+    completedSteps: 0,
+    
+    // Status-Items definieren
+    init() {
+        this.items = {
+            supabase: { name: 'Supabase Client laden', status: 'pending', key: 'supabase' },
+            objekttypen: { name: 'Objekttypen laden', status: 'pending', key: 'objekttypen' },
+            anlagentypen: { name: 'Anlagentypen laden', status: 'pending', key: 'anlagentypen' },
+            qualitaeten: { name: 'Qualitäten laden', status: 'pending', key: 'qualitaeten' },
+            technologien: { name: 'Technologien laden', status: 'pending', key: 'technologien' },
+            tueren: { name: 'Türen laden', status: 'pending', key: 'tueren' },
+            funktionen: { name: 'Funktionen laden', status: 'pending', key: 'funktionen' },
+            fragen: { name: 'Fragen laden', status: 'pending', key: 'fragen' },
+            zylinder: { name: 'Zylinder-Systeme laden', status: 'pending', key: 'zylinder' },
+            globaleinstellungen: { name: 'Globale Einstellungen laden', status: 'pending', key: 'globaleinstellungen' }
+        };
+        this.totalSteps = Object.keys(this.items).length;
+        this.completedSteps = 0;
+        this.renderStatusItems();
+    },
+    
+    // Status-Item aktualisieren
+    updateStatus(key, status, error = null) {
+        if (this.items[key]) {
+            this.items[key].status = status;
+            if (error) {
+                this.items[key].error = error;
+            }
+            
+            if (status === 'success') {
+                this.completedSteps++;
+            }
+            
+            this.renderStatusItem(key);
+            this.updateProgressBar();
+        }
+    },
+    
+    // Einzelnes Status-Item rendern
+    renderStatusItem(key) {
+        const item = this.items[key];
+        if (!item) return;
+        
+        const container = document.getElementById('loading-status-items');
+        if (!container) return;
+        
+        let itemElement = document.getElementById(`loading-status-${key}`);
+        
+        if (!itemElement) {
+            itemElement = document.createElement('div');
+            itemElement.id = `loading-status-${key}`;
+            itemElement.className = 'flex items-center justify-between p-3 bg-gray-50 rounded-lg border';
+            container.appendChild(itemElement);
+        }
+        
+        let icon = '';
+        let textColor = '';
+        let bgColor = '';
+        
+        if (item.status === 'success') {
+            icon = '<i class="fas fa-check-circle text-green-500"></i>';
+            textColor = 'text-green-700';
+            bgColor = 'bg-green-50 border-green-200';
+        } else if (item.status === 'error') {
+            icon = '<i class="fas fa-times-circle text-red-500"></i>';
+            textColor = 'text-red-700';
+            bgColor = 'bg-red-50 border-red-200';
+        } else if (item.status === 'loading') {
+            icon = '<i class="fas fa-spinner fa-spin text-blue-500"></i>';
+            textColor = 'text-blue-700';
+            bgColor = 'bg-blue-50 border-blue-200';
+        } else {
+            icon = '<i class="fas fa-circle text-gray-400"></i>';
+            textColor = 'text-gray-500';
+            bgColor = 'bg-gray-50 border-gray-200';
+        }
+        
+        itemElement.className = `flex items-center justify-between p-3 ${bgColor} rounded-lg border`;
+        itemElement.innerHTML = `
+            <div class="flex items-center space-x-3">
+                <span class="text-xl">${icon}</span>
+                <span class="${textColor} font-medium">${item.name}</span>
+            </div>
+            ${item.error ? `<span class="text-xs text-red-600">${item.error}</span>` : ''}
+        `;
+    },
+    
+    // Alle Status-Items rendern
+    renderStatusItems() {
+        Object.keys(this.items).forEach(key => {
+            this.renderStatusItem(key);
+        });
+    },
+    
+    // Progress-Balken aktualisieren
+    updateProgressBar() {
+        const percentage = Math.round((this.completedSteps / this.totalSteps) * 100);
+        const progressBar = document.getElementById('loading-progress-bar');
+        const progressText = document.getElementById('loading-progress-text');
+        
+        if (progressBar) {
+            progressBar.style.width = `${percentage}%`;
+        }
+        
+        if (progressText) {
+            progressText.textContent = `${percentage}%`;
+        }
+        
+        // Wenn alle Schritte abgeschlossen sind, Loading Screen ausblenden
+        if (this.completedSteps === this.totalSteps) {
+            setTimeout(() => {
+                this.hideLoadingScreen();
+            }, 500); // Kurze Verzögerung für bessere UX
+        }
+    },
+    
+    // Loading Screen ausblenden
+    hideLoadingScreen() {
+        const loadingScreen = document.getElementById('loading-screen');
+        if (loadingScreen) {
+            loadingScreen.style.opacity = '0';
+            loadingScreen.style.transition = 'opacity 0.5s ease-out';
+            setTimeout(() => {
+                loadingScreen.style.display = 'none';
+            }, 500);
+        }
+    }
+};
 
 let allCylinderSystems = [];
 let questionsData = [];
@@ -397,6 +570,15 @@ async function refreshData(showProgress = true) {
         // Alle Content Types laden
         console.log('🔄 Lade alle Content Types...');
         
+        // Status auf "loading" setzen für alle Content Types
+        loadingStatus.updateStatus('objekttypen', 'loading');
+        loadingStatus.updateStatus('anlagentypen', 'loading');
+        loadingStatus.updateStatus('qualitaeten', 'loading');
+        loadingStatus.updateStatus('technologien', 'loading');
+        loadingStatus.updateStatus('tueren', 'loading');
+        loadingStatus.updateStatus('funktionen', 'loading');
+        loadingStatus.updateStatus('fragen', 'loading');
+        
         const [objekttypResponse, anlagentypResponse, qualitaetResponse, technologieResponse, tuerenResponse, funktionenResponse, questionsResponse] = await Promise.all([
             fetchAndHandle(`${STRAPI_BASE_URL}/api/objekttyps?populate[0]=tuerens&populate[1]=icon&pagination[pageSize]=100&_t=${Date.now()}`, 'Objekttypen'),
             fetchAndHandle(`${STRAPI_BASE_URL}/api/anlagentyps?populate[0]=icon&pagination[pageSize]=100&_t=${Date.now()}`, 'Anlagentypen'),
@@ -424,11 +606,21 @@ async function refreshData(showProgress = true) {
             questions: questionsResponse?.data?.length || 0
         });
         
+        // Status-Updates für Content Types
+        loadingStatus.updateStatus('objekttypen', objekttypResponse?.data?.length > 0 ? 'success' : 'error');
+        loadingStatus.updateStatus('anlagentypen', anlagentypResponse?.data?.length > 0 ? 'success' : 'error');
+        loadingStatus.updateStatus('qualitaeten', qualitaetResponse?.data?.length > 0 ? 'success' : 'error');
+        loadingStatus.updateStatus('technologien', technologieResponse?.data?.length > 0 ? 'success' : 'error');
+        loadingStatus.updateStatus('tueren', tuerenResponse?.data?.length > 0 ? 'success' : 'error');
+        loadingStatus.updateStatus('funktionen', funktionenResponse?.data?.length > 0 ? 'success' : 'error');
+        loadingStatus.updateStatus('fragen', questionsResponse?.data?.length > 0 ? 'success' : 'error');
+        
         // Zylinder werden jetzt über die Fragen geladen
         console.log('🔄 Zylinder werden über Fragen geladen...');
         
         // Globale Einstellungen laden
         console.log('🔄 Lade Global Settings...');
+        loadingStatus.updateStatus('globaleinstellungen', 'loading');
         let globalSettingsResponse;
         
         try {
@@ -452,6 +644,13 @@ async function refreshData(showProgress = true) {
         } catch (error) {
             console.error('❌ Fehler beim Laden der Global Settings:', error);
             globalSettingsResponse = null;
+            loadingStatus.updateStatus('globaleinstellungen', 'error', error.message);
+        }
+        
+        if (globalSettingsResponse && globalSettingsResponse.data) {
+            loadingStatus.updateStatus('globaleinstellungen', 'success');
+        } else if (loadingStatus.items.globaleinstellungen?.status === 'loading') {
+            loadingStatus.updateStatus('globaleinstellungen', 'success'); // Optional, nicht kritisch
         }
 
         if (showProgress) {
@@ -460,6 +659,7 @@ async function refreshData(showProgress = true) {
 
         // Zylinder direkt laden (da sie nicht in Fragen-Relations sind)
         console.log('🔄 Lade Zylinder direkt...');
+        loadingStatus.updateStatus('zylinder', 'loading');
         try {
             const zylinderResponse = await fetchAndHandle(
                 `${STRAPI_BASE_URL}/api/zylinders?populate[0]=image&populate[1]=objekttyps&populate[2]=anlagentyps&populate[3]=technologies&populate[4]=qualitaets&populate[5]=funktionens&pagination[pageSize]=100&_t=${Date.now()}`,
@@ -489,13 +689,16 @@ async function refreshData(showProgress = true) {
                     };
                 });
                 console.log(`✅ ${allCylinderSystems.length} Zylinder direkt geladen`);
+                loadingStatus.updateStatus('zylinder', allCylinderSystems.length > 0 ? 'success' : 'error');
             } else {
                 console.log('⚠️ Keine Zylinder-Daten erhalten');
                 allCylinderSystems = [];
+                loadingStatus.updateStatus('zylinder', 'error', 'Keine Daten erhalten');
             }
         } catch (error) {
             console.error('❌ Fehler beim Laden der Zylinder:', error);
             allCylinderSystems = [];
+            loadingStatus.updateStatus('zylinder', 'error', error.message);
         }
 
         // Logo setzen
@@ -1190,10 +1393,10 @@ async function initializeQuestionnaire() {
         
         console.log('✅ Fragebogen erfolgreich initialisiert');
         
-        // Debug: Initialisiere Debug-Panels
-        createDebugPanel();
-        createDebugToggle();
-        console.log('✅ Debug-System initialisiert');
+        // Debug: Initialisiere Debug-Panels (deaktiviert)
+        // createDebugPanel();
+        // createDebugToggle();
+        // console.log('✅ Debug-System initialisiert');
 
     } catch (error) {
         console.error('❌ Fehler beim Initialisieren des Fragebogens:', error);
@@ -1903,13 +2106,12 @@ function showSaveStatus(type, message) {
 }
 
 async function findOrCreateKunde(email, vorname, nachname, telefon) {
-    if (!supabase) {
-        throw new Error('Supabase Client nicht initialisiert');
-    }
+    // Stelle sicher, dass Supabase geladen ist
+    const supabaseClient = await ensureSupabaseReady();
 
     try {
         // 1. Prüfe ob Kunde existiert
-        const { data: existingKunde, error: searchError } = await supabase
+        const { data: existingKunde, error: searchError } = await supabaseClient
             .from('kunden')
             .select('id, kundenummer')
             .eq('email', email.toLowerCase().trim())
@@ -1917,7 +2119,7 @@ async function findOrCreateKunde(email, vorname, nachname, telefon) {
         
         if (existingKunde) {
             // Kunde existiert bereits - aktualisiere Daten
-            const { error: updateError } = await supabase
+            const { error: updateError } = await supabaseClient
                 .from('kunden')
                 .update({
                     vorname: vorname || existingKunde.vorname,
@@ -1937,7 +2139,7 @@ async function findOrCreateKunde(email, vorname, nachname, telefon) {
         
         // 2. Erstelle neuen Kunden (Kundenummer wird automatisch generiert)
         // Verwende die find_or_create_kunde Funktion aus Supabase
-        const { data: kundeId, error: rpcError } = await supabase.rpc('find_or_create_kunde', {
+        const { data: kundeId, error: rpcError } = await supabaseClient.rpc('find_or_create_kunde', {
             p_email: email,
             p_vorname: vorname,
             p_nachname: nachname,
@@ -1949,7 +2151,7 @@ async function findOrCreateKunde(email, vorname, nachname, telefon) {
             console.warn('RPC-Funktion nicht verfügbar, verwende direkten Insert:', rpcError);
             
             // Hole nächste Kundenummer (temporär, bis Trigger funktioniert)
-            const { data: newKunde, error: createError } = await supabase
+            const { data: newKunde, error: createError } = await supabaseClient
                 .from('kunden')
                 .insert([{
                     email: email.toLowerCase().trim(),
@@ -1971,7 +2173,7 @@ async function findOrCreateKunde(email, vorname, nachname, telefon) {
         }
         
         // Hole Kundenummer für Anzeige
-        const { data: kundeData } = await supabase
+        const { data: kundeData } = await supabaseClient
             .from('kunden')
             .select('kundenummer')
             .eq('id', kundeId)
@@ -2010,15 +2212,14 @@ async function savePlanToCRM() {
     if (saveBtn) saveBtn.disabled = true;
     
     try {
-        if (!supabase) {
-            throw new Error('Supabase Client nicht initialisiert. Bitte laden Sie die Seite neu.');
-        }
+        // Stelle sicher, dass Supabase geladen ist
+        const supabaseClient = await ensureSupabaseReady();
         
         // 3. Kunde finden oder erstellen
         const kundeId = await findOrCreateKunde(email, vorname, nachname, telefon);
         
         // Hole Kundenummer für Anzeige
-        const { data: kundeInfo } = await supabase
+        const { data: kundeInfo } = await supabaseClient
             .from('kunden')
             .select('kundenummer')
             .eq('id', kundeId)
@@ -2041,7 +2242,7 @@ async function savePlanToCRM() {
             status: 'erstellt'
         };
         
-        const { data: planDataResult, error: planError } = await supabase
+        const { data: planDataResult, error: planError } = await supabaseClient
             .from('schliessplaene')
             .insert([schliessplanData])
             .select()
@@ -2748,12 +2949,28 @@ function debugMatchCalculation(userAnswers, cylinder) {
 
 // --- INITIALIZATION ---
 // Warte bis DOM geladen ist
+async function startApplication() {
+    // Loading Screen initialisieren
+    loadingStatus.init();
+    
+    // Supabase laden (mit Status-Update)
+    loadingStatus.updateStatus('supabase', 'loading');
+    try {
+        initializeSupabase();
+        await waitForSupabase();
+        loadingStatus.updateStatus('supabase', 'success');
+    } catch (error) {
+        loadingStatus.updateStatus('supabase', 'error', error.message);
+    }
+    
+    // Fragebogen initialisieren (lädt alle anderen Daten)
+    await initializeQuestionnaire();
+}
+
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-        initializeSupabase(); // Supabase initialisieren
-        initializeQuestionnaire(); // Fragebogen initialisieren
+        startApplication();
     });
 } else {
-    initializeSupabase(); // Supabase initialisieren
-    initializeQuestionnaire(); // Fragebogen initialisieren
+    startApplication();
 }

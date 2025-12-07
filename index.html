@@ -35,6 +35,32 @@
     </script>
 </head>
 <body class="flex items-center justify-center min-h-screen p-4">
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="fixed inset-0 bg-white z-50 flex items-center justify-center">
+        <div class="w-full max-w-2xl mx-auto p-8">
+            <div class="text-center mb-8">
+                <h2 class="text-3xl font-bold text-gray-800 mb-2">Lade Schließplan Generator</h2>
+                <p class="text-gray-600">Bitte warten Sie, während wir alle Komponenten initialisieren...</p>
+            </div>
+            
+            <!-- Progress Bar -->
+            <div class="mb-8">
+                <div class="w-full bg-gray-200 rounded-full h-4 mb-2">
+                    <div id="loading-progress-bar" class="bg-[#1a3d5c] h-4 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+                <div class="text-center">
+                    <span id="loading-progress-text" class="text-sm font-semibold text-gray-700">0%</span>
+                </div>
+            </div>
+            
+            <!-- Status Items -->
+            <div id="loading-status-items" class="space-y-3">
+                <!-- Status items werden dynamisch eingefügt -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Content -->
     <div class="w-full max-w-7xl mx-auto bg-white rounded-2xl shadow-xl p-6 md:p-10">
 
         <div class="flex items-center space-x-4">

@@ -287,3 +287,36 @@ select:focus {
     max-height: 200px;
     overflow: auto;
 }
+
+/* Loading Screen Styles */
+#loading-screen {
+    z-index: 9999;
+    transition: opacity 0.5s ease-out;
+}
+
+#loading-progress-bar {
+    transition: width 0.3s ease-out;
+}
+
+#loading-status-items {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+#loading-status-items::-webkit-scrollbar {
+    width: 8px;
+}
+
+#loading-status-items::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+#loading-status-items::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+#loading-status-items::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
