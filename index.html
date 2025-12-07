@@ -8,11 +8,12 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <link rel="stylesheet" href="style.css">
-    <!-- Supabase Client - wird asynchron geladen, blockiert die Seite nicht -->
+    <!-- Supabase Client - wird sofort asynchron geladen, blockiert die Seite nicht -->
     <script>
-        // Supabase wird erst nach DOM-Load geladen
-        window.addEventListener('DOMContentLoaded', async () => {
+        // Supabase wird sofort geladen (nicht erst beim DOMContentLoaded)
+        (async () => {
             try {
+                console.log('🔄 Starte Supabase-Laden...');
                 // Dynamisch Supabase importieren
                 const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
                 
@@ -30,8 +31,10 @@
                 console.error('❌ Fehler beim Laden von Supabase:', error);
                 console.warn('⚠️ Seite funktioniert weiterhin, aber Speichern wird nicht funktionieren');
                 window.supabaseClient = null;
+                // Sende auch ein Error-Event
+                window.dispatchEvent(new CustomEvent('supabase-error', { detail: error }));
             }
-        });
+        })();
     </script>
 </head>
 <body class="flex items-center justify-center min-h-screen p-4">

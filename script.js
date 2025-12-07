@@ -48,23 +48,40 @@ function waitForSupabase() {
         
         window.addEventListener('supabase-ready', onReady);
         
-        // Fallback: Polling falls Event nicht kommt (max 5 Sekunden)
+        // Fallback: Polling falls Event nicht kommt (max 10 Sekunden)
         let attempts = 0;
-        const maxAttempts = 50; // 50 * 100ms = 5 Sekunden
-        const checkInterval = setInterval(() => {
+        const maxAttempts = 100; // 100 * 100ms = 10 Sekunden (erhöht für langsamere Verbindungen)
+        let checkInterval = null;
+        
+        // Error Event Listener
+        const onError = (event) => {
+            const errorMessage = event.detail?.message || 'Unbekannter Fehler';
+            console.error('❌ Supabase Fehler-Event erhalten:', errorMessage);
+            window.removeEventListener('supabase-error', onError);
+            window.removeEventListener('supabase-ready', onReady);
+            if (checkInterval) clearInterval(checkInterval);
+            reject(new Error(`Supabase Client konnte nicht geladen werden: ${errorMessage}`));
+        };
+        
+        window.addEventListener('supabase-error', onError);
+        
+        // Starte Polling
+        checkInterval = setInterval(() => {
             attempts++;
             if (typeof window.supabaseClient !== 'undefined' && window.supabaseClient !== null) {
                 supabase = window.supabaseClient;
                 supabaseInitialized = true;
                 console.log('✅ Supabase Client über Polling initialisiert');
                 window.removeEventListener('supabase-ready', onReady);
+                window.removeEventListener('supabase-error', onError);
                 clearInterval(checkInterval);
                 resolve(supabase);
             } else if (attempts >= maxAttempts) {
-                console.error('❌ Supabase Client konnte nicht geladen werden (Timeout)');
+                console.error('❌ Supabase Client konnte nicht geladen werden (Timeout nach 10 Sekunden)');
                 window.removeEventListener('supabase-ready', onReady);
+                window.removeEventListener('supabase-error', onError);
                 clearInterval(checkInterval);
-                reject(new Error('Supabase Client konnte nicht geladen werden'));
+                reject(new Error('Supabase Client konnte nicht geladen werden (Timeout)'));
             }
         }, 100);
     });
@@ -2953,18 +2970,47 @@ async function startApplication() {
     // Loading Screen initialisieren
     loadingStatus.init();
     
-    // Supabase laden (mit Status-Update)
+    // Supabase laden (mit Status-Update) - Warte kurz, damit Supabase Zeit hat zu starten
     loadingStatus.updateStatus('supabase', 'loading');
+    
+    // Warte kurz, damit Supabase-Laden in index.html starten kann
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
     try {
         initializeSupabase();
-        await waitForSupabase();
+        // Warte bis zu 10 Sekunden auf Supabase
+        await Promise.race([
+            waitForSupabase(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
+        ]);
         loadingStatus.updateStatus('supabase', 'success');
     } catch (error) {
-        loadingStatus.updateStatus('supabase', 'error', error.message);
+        console.warn('⚠️ Supabase konnte nicht geladen werden, aber die Anwendung läuft weiter:', error.message);
+        loadingStatus.updateStatus('supabase', 'error', error.message || 'Timeout oder Verbindungsfehler');
+        // Setze Supabase auf null, damit die App weiterlaufen kann
+        supabase = null;
+        supabaseInitialized = false;
     }
     
-    // Fragebogen initialisieren (lädt alle anderen Daten)
-    await initializeQuestionnaire();
+    // Fragebogen initialisieren (lädt alle anderen Daten) - auch wenn Supabase fehlgeschlagen ist
+    try {
+        await initializeQuestionnaire();
+    } catch (error) {
+        console.error('❌ Fehler beim Initialisieren des Fragebogens:', error);
+        // Zeige Fehlermeldung im Loading Screen
+        const loadingScreen = document.getElementById('loading-screen');
+        if (loadingScreen) {
+            loadingScreen.innerHTML += `
+                <div class="mt-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+                    <p class="font-bold">Fehler beim Laden:</p>
+                    <p>${error.message}</p>
+                    <button onclick="location.reload()" class="mt-2 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded">
+                        Seite neu laden
+                    </button>
+                </div>
+            `;
+        }
+    }
 }
 
 if (document.readyState === 'loading') {
