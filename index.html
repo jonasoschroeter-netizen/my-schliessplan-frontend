@@ -15,16 +15,50 @@
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmZmVjcWRheWJ5aGhkZmtreXFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDY5NDYsImV4cCI6MjA3NzA4Mjk0Nn0.7iZ5UY2mSepEAhtPKlQ71JdIzmsLGzgU3RvmEJxzln4';
         
         // Initialisiere Supabase nachdem das Script geladen ist
-        function initializeSupabaseClient() {
+        function initializeSupabaseClient(retryCount = 0) {
             try {
-                // Prüfe ob Supabase Library geladen ist
-                if (typeof supabase === 'undefined') {
-                    console.log('⏳ Supabase Library noch nicht geladen, warte...');
+                // Versuche verschiedene Zugriffswege auf das Supabase-Objekt
+                let supabaseObj = null;
+                
+                // Versuche 1: Über window.supabase (UMD Build macht es global verfügbar)
+                if (typeof window.supabase !== 'undefined' && window.supabase !== null) {
+                    supabaseObj = window.supabase;
+                }
+                // Versuche 2: Direkter Zugriff auf supabase (falls im Scope)
+                else if (typeof supabase !== 'undefined' && supabase !== null) {
+                    supabaseObj = supabase;
+                }
+                // Versuche 3: Über window.Supabase (fallback)
+                else if (typeof window.Supabase !== 'undefined' && window.Supabase !== null) {
+                    supabaseObj = window.Supabase;
+                }
+                
+                // Prüfe ob Objekt verfügbar ist und createClient hat
+                if (!supabaseObj || typeof supabaseObj.createClient !== 'function') {
+                    console.log('⏳ Supabase Library noch nicht geladen, warte...', retryCount, {
+                        windowSupabase: typeof window.supabase,
+                        supabase: typeof supabase,
+                        windowSupabaseValue: window.supabase
+                    });
+                    if (retryCount < 20) { // Max 20 Versuche (2 Sekunden)
+                        setTimeout(() => initializeSupabaseClient(retryCount + 1), 100);
+                    } else {
+                        console.error('❌ Supabase Library konnte nicht geladen werden (zu viele Versuche)');
+                        window.dispatchEvent(new CustomEvent('supabase-error', { 
+                            detail: { message: 'Supabase Library konnte nicht geladen werden' } 
+                        }));
+                    }
                     return false;
                 }
                 
                 // Supabase Client erstellen und global verfügbar machen
-                window.supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                window.supabaseClient = supabaseObj.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                
+                // Prüfe ob Client erfolgreich erstellt wurde
+                if (!window.supabaseClient) {
+                    throw new Error('Supabase Client wurde nicht erstellt (null)');
+                }
+                
                 console.log('✅ Supabase Client erfolgreich initialisiert');
                 
                 // Trigger event für script.js
@@ -32,45 +66,106 @@
                 return true;
             } catch (error) {
                 console.error('❌ Fehler beim Initialisieren von Supabase:', error);
+                console.error('🔍 Debug Info:', {
+                    supabaseType: typeof supabase,
+                    supabaseValue: supabase,
+                    createClientType: typeof (supabase?.createClient),
+                    retryCount: retryCount
+                });
+                
+                // Versuche es nochmal wenn noch Versuche übrig sind
+                if (retryCount < 5) {
+                    console.log(`🔄 Versuche erneut (${retryCount + 1}/5)...`);
+                    setTimeout(() => initializeSupabaseClient(retryCount + 1), 300);
+                    return false;
+                }
+                
                 console.warn('⚠️ Seite funktioniert weiterhin, aber Speichern wird nicht funktionieren');
                 window.supabaseClient = null;
                 // Sende auch ein Error-Event
-                window.dispatchEvent(new CustomEvent('supabase-error', { detail: { message: error.message } }));
+                window.dispatchEvent(new CustomEvent('supabase-error', { 
+                    detail: { message: error.message || 'Unbekannter Fehler beim Initialisieren' } 
+                }));
                 return false;
             }
         }
         
-        // Lade Supabase Script und initialisiere danach
-        const supabaseScript = document.createElement('script');
-        supabaseScript.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
-        supabaseScript.async = true;
-        supabaseScript.onload = function() {
-            console.log('📦 Supabase Script geladen, initialisiere Client...');
-            // Warte kurz und initialisiere dann
-            setTimeout(() => {
-                if (!initializeSupabaseClient()) {
-                    // Falls nicht erfolgreich, versuche es nochmal nach kurzer Verzögerung
-                    setTimeout(initializeSupabaseClient, 200);
-                }
-            }, 100);
-        };
-        supabaseScript.onerror = function() {
-            console.error('❌ Fehler beim Laden des Supabase Scripts');
-            window.dispatchEvent(new CustomEvent('supabase-error', { 
-                detail: { message: 'Supabase Script konnte nicht geladen werden' } 
-            }));
-        };
-        
-        // Füge Script zum Head hinzu
-        document.head.appendChild(supabaseScript);
-        
-        // Fallback: Versuche auch ohne onload-Event (falls bereits geladen)
-        setTimeout(() => {
-            if (!window.supabaseClient && typeof supabase !== 'undefined') {
-                console.log('🔄 Fallback: Versuche Supabase-Initialisierung...');
-                initializeSupabaseClient();
+        // Prüfe ob Supabase bereits geladen wurde (z.B. bei Seiten-Reload)
+        function checkExistingSupabase() {
+            // Prüfe verschiedene mögliche globale Variablen
+            const supabaseObj = window.supabase || window.Supabase || (typeof supabase !== 'undefined' ? supabase : null);
+            
+            if (supabaseObj && typeof supabaseObj.createClient === 'function') {
+                console.log('✅ Supabase bereits verfügbar, initialisiere Client...');
+                return initializeSupabaseClient(0);
             }
-        }, 500);
+            
+            return false;
+        }
+        
+        // Versuche zuerst, ob Supabase bereits vorhanden ist
+        if (!checkExistingSupabase()) {
+            // Lade Supabase Script und initialisiere danach
+            const supabaseScript = document.createElement('script');
+            supabaseScript.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
+            supabaseScript.async = true;
+            supabaseScript.id = 'supabase-script';
+            
+            // Verhindere doppeltes Laden
+            if (document.getElementById('supabase-script')) {
+                console.log('📦 Supabase Script bereits im DOM, warte auf Laden...');
+                setTimeout(() => {
+                    if (!checkExistingSupabase()) {
+                        initializeSupabaseClient(0);
+                    }
+                }, 500);
+            } else {
+                supabaseScript.onload = function() {
+                    console.log('📦 Supabase Script geladen, prüfe Verfügbarkeit...');
+                    // Warte etwas länger, damit Supabase vollständig initialisiert ist
+                    setTimeout(() => {
+                        // Prüfe verschiedene globale Variablen
+                        const supabaseObj = window.supabase || window.Supabase || (typeof supabase !== 'undefined' ? supabase : null);
+                        
+                        console.log('🔍 Prüfe Supabase-Objekt:', {
+                            windowSupabase: typeof window.supabase,
+                            windowSupabaseValue: window.supabase,
+                            globalSupabase: typeof supabase,
+                            globalSupabaseValue: supabase,
+                            hasCreateClient: typeof (supabaseObj?.createClient) === 'function'
+                        });
+                        
+                        // Setze supabase global falls über window verfügbar
+                        if (window.supabase && typeof window.supabase.createClient === 'function') {
+                            window.supabaseGlobal = window.supabase;
+                        }
+                        
+                        // Initialisiere mit mehr Wartezeit
+                        if (!initializeSupabaseClient(0)) {
+                            console.log('⏳ Initialisierung läuft im Hintergrund...');
+                        }
+                    }, 300);
+                };
+                
+                supabaseScript.onerror = function() {
+                    console.error('❌ Fehler beim Laden des Supabase Scripts');
+                    window.dispatchEvent(new CustomEvent('supabase-error', { 
+                        detail: { message: 'Supabase Script konnte nicht geladen werden' } 
+                    }));
+                };
+                
+                // Füge Script zum Head hinzu
+                document.head.appendChild(supabaseScript);
+            }
+        }
+        
+        // Fallback: Versuche auch später nochmal (falls bereits geladen oder nachdem Script fertig ist)
+        setTimeout(() => {
+            if (!window.supabaseClient) {
+                console.log('🔄 Fallback: Versuche Supabase-Initialisierung erneut...');
+                checkExistingSupabase() || initializeSupabaseClient(0);
+            }
+        }, 1000);
     </script>
 </head>
 <body class="flex items-center justify-center min-h-screen p-4">
