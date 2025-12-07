@@ -48,9 +48,9 @@ function waitForSupabase() {
         
         window.addEventListener('supabase-ready', onReady);
         
-        // Fallback: Polling falls Event nicht kommt (max 10 Sekunden)
+        // Fallback: Polling falls Event nicht kommt (max 15 Sekunden)
         let attempts = 0;
-        const maxAttempts = 100; // 100 * 100ms = 10 Sekunden (erhöht für langsamere Verbindungen)
+        const maxAttempts = 150; // 150 * 100ms = 15 Sekunden (erhöht für sehr langsame Verbindungen)
         let checkInterval = null;
         
         // Error Event Listener
@@ -77,11 +77,16 @@ function waitForSupabase() {
                 clearInterval(checkInterval);
                 resolve(supabase);
             } else if (attempts >= maxAttempts) {
-                console.error('❌ Supabase Client konnte nicht geladen werden (Timeout nach 10 Sekunden)');
+                console.error('❌ Supabase Client konnte nicht geladen werden (Timeout nach 15 Sekunden)');
+                console.error('🔍 Debug Info:', {
+                    supabaseClientExists: typeof window.supabaseClient !== 'undefined',
+                    supabaseClientValue: window.supabaseClient,
+                    supabaseLibraryExists: typeof supabase !== 'undefined'
+                });
                 window.removeEventListener('supabase-ready', onReady);
                 window.removeEventListener('supabase-error', onError);
                 clearInterval(checkInterval);
-                reject(new Error('Supabase Client konnte nicht geladen werden (Timeout)'));
+                reject(new Error('Supabase Client konnte nicht geladen werden (Timeout nach 15 Sekunden)'));
             }
         }, 100);
     });
