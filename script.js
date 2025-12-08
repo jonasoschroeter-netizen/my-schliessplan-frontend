@@ -653,14 +653,14 @@ async function refreshData(showProgress = true) {
             questions: questionsResponse?.data?.length || 0
         });
         
-        // Status-Updates für Content Types
-        loadingStatus.updateStatus('objekttypen', objekttypResponse?.data?.length > 0 ? 'success' : 'error');
-        loadingStatus.updateStatus('anlagentypen', anlagentypResponse?.data?.length > 0 ? 'success' : 'error');
-        loadingStatus.updateStatus('qualitaeten', qualitaetResponse?.data?.length > 0 ? 'success' : 'error');
-        loadingStatus.updateStatus('technologien', technologieResponse?.data?.length > 0 ? 'success' : 'error');
-        loadingStatus.updateStatus('tueren', tuerenResponse?.data?.length > 0 ? 'success' : 'error');
-        loadingStatus.updateStatus('funktionen', funktionenResponse?.data?.length > 0 ? 'success' : 'error');
-        loadingStatus.updateStatus('fragen', questionsResponse?.data?.length > 0 ? 'success' : 'error');
+        // Status-Updates für Content Types - prüfe explizit auf null/undefined für bessere Fehlerbehandlung
+        loadingStatus.updateStatus('objekttypen', (objekttypResponse && objekttypResponse.data && objekttypResponse.data.length > 0) ? 'success' : 'error', objekttypResponse ? null : '404 - API nicht erreichbar');
+        loadingStatus.updateStatus('anlagentypen', (anlagentypResponse && anlagentypResponse.data && anlagentypResponse.data.length > 0) ? 'success' : 'error', anlagentypResponse ? null : '404 - API nicht erreichbar');
+        loadingStatus.updateStatus('qualitaeten', (qualitaetResponse && qualitaetResponse.data && qualitaetResponse.data.length > 0) ? 'success' : 'error', qualitaetResponse ? null : '404 - API nicht erreichbar');
+        loadingStatus.updateStatus('technologien', (technologieResponse && technologieResponse.data && technologieResponse.data.length > 0) ? 'success' : 'error', technologieResponse ? null : '404 - API nicht erreichbar');
+        loadingStatus.updateStatus('tueren', (tuerenResponse && tuerenResponse.data && tuerenResponse.data.length > 0) ? 'success' : 'error', tuerenResponse ? null : '404 - API nicht erreichbar');
+        loadingStatus.updateStatus('funktionen', (funktionenResponse && funktionenResponse.data && funktionenResponse.data.length > 0) ? 'success' : 'error', funktionenResponse ? null : '404 - API nicht erreichbar');
+        loadingStatus.updateStatus('fragen', (questionsResponse && questionsResponse.data && questionsResponse.data.length > 0) ? 'success' : 'error', questionsResponse ? null : '404 - API nicht erreichbar');
         
         // Zylinder werden jetzt über die Fragen geladen
         console.log('🔄 Zylinder werden über Fragen geladen...');
