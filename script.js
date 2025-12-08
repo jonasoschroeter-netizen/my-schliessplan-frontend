@@ -2624,8 +2624,6 @@ function exportSchliessplanToHTML() {
 // Die exportSchliessplanToHTML Funktion verwendet jetzt generateSchliessplanHTML() (siehe oben)
 
 // --- EVENT LISTENERS ---
-
-// --- EVENT LISTENERS ---
 elements.nextBtn.addEventListener('click', handleNext);
 elements.prevBtn.addEventListener('click', handlePrev);
 elements.addRowBtn.addEventListener('click', addSchliessplanRow);
