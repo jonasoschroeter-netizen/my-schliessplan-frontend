@@ -530,7 +530,7 @@ function getAttributeColor(attribute) {
     return colorMap[attribute] || 'text-gray-600';
 }
 
-async function fetchAndHandle(url, requestName) {
+async function fetchAndHandle(url, requestName, timeout = 10000) {
     try {
         // Cache-Busting hinzufügen wenn aktiviert
         let finalUrl = url;
@@ -539,20 +539,37 @@ async function fetchAndHandle(url, requestName) {
             finalUrl = `${url}${separator}_t=${Date.now()}`;
         }
         
-        const response = await fetch(finalUrl, {
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
+        // Timeout für fetch hinzufügen
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
         
-        if (!response.ok) {
-            const errorBody = await response.json().catch(() => ({}));
-            console.error(`Fehler bei Anfrage "${requestName}" an URL: ${finalUrl}`);
-            console.error(`Status: ${response.status}`, errorBody);
-            throw new Error(`HTTP Fehler bei "${requestName}": ${response.status}`);
+        try {
+            const response = await fetch(finalUrl, {
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                const errorBody = await response.json().catch(() => ({}));
+                console.error(`Fehler bei Anfrage "${requestName}" an URL: ${finalUrl}`);
+                console.error(`Status: ${response.status}`, errorBody);
+                throw new Error(`HTTP Fehler bei "${requestName}": ${response.status}`);
+            }
+            return await response.json();
+        } catch (fetchError) {
+            clearTimeout(timeoutId);
+            if (fetchError.name === 'AbortError') {
+                throw new Error(`Timeout bei "${requestName}" - Server antwortet nicht (${timeout}ms)`);
+            }
+            throw fetchError;
         }
-        return await response.json();
-    } catch (error) { throw error; }
+    } catch (error) { 
+        throw error; 
+    }
 }
 
 // Neue Funktion zum Laden aller Optionen mit Paginierung
