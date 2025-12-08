@@ -1979,7 +1979,7 @@ function renderPlan() {
             <td><input type="number" min="1" class="input-cell w-20 text-center" value="${row.anzahl}" onchange="updateRowData(${row.id}, 'anzahl', this.value)"></td>
             <td><div class="flex items-center justify-center gap-3">${functionIcons}</div></td>
             <td class="border-none bg-gray-100"></td>
-            <td class="font-semibold bg-gray-50 schliessplan-header-vertical">${row.tuer}</td>
+            <td class="schliessplan-data-vertical">${row.tuer}</td>
             ${matrixCells}`;
         elements.schliessplanBody.appendChild(tr);
     });
