@@ -145,18 +145,33 @@ const loadingStatus = {
         this.totalSteps = Object.keys(this.items).length;
         this.completedSteps = 0;
         this.renderStatusItems();
+        // Progress Bar initial auf 0% setzen
+        this.updateProgressBar();
     },
     
     // Status-Item aktualisieren
     updateStatus(key, status, error = null) {
         if (this.items[key]) {
+            const previousStatus = this.items[key].status;
+            
+            // Prüfe ob dieser Schritt bereits als abgeschlossen gezählt wurde
+            const wasCompleted = previousStatus === 'success' || previousStatus === 'error';
+            
             this.items[key].status = status;
             if (error) {
                 this.items[key].error = error;
             }
             
-            if (status === 'success') {
+            // Zähle als abgeschlossen, wenn success ODER error (beide sind "fertig")
+            const isCompleted = status === 'success' || status === 'error';
+            
+            // Nur erhöhen wenn vorher nicht abgeschlossen war und jetzt abgeschlossen ist
+            if (!wasCompleted && isCompleted) {
                 this.completedSteps++;
+            }
+            // Wenn vorher abgeschlossen war und jetzt nicht mehr, dann verringern
+            else if (wasCompleted && !isCompleted) {
+                this.completedSteps = Math.max(0, this.completedSteps - 1);
             }
             
             this.renderStatusItem(key);
