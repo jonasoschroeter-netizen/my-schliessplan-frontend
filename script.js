@@ -616,15 +616,25 @@ async function refreshData(showProgress = true) {
         loadingStatus.updateStatus('funktionen', 'loading');
         loadingStatus.updateStatus('fragen', 'loading');
         
-        const [objekttypResponse, anlagentypResponse, qualitaetResponse, technologieResponse, tuerenResponse, funktionenResponse, questionsResponse] = await Promise.all([
-            fetchAndHandle(`${STRAPI_BASE_URL}/api/objekttyps?populate[0]=tuerens&populate[1]=icon&pagination[pageSize]=100&_t=${Date.now()}`, 'Objekttypen'),
-            fetchAndHandle(`${STRAPI_BASE_URL}/api/anlagentyps?populate[0]=icon&pagination[pageSize]=100&_t=${Date.now()}`, 'Anlagentypen'),
-            fetchAndHandle(`${STRAPI_BASE_URL}/api/qualitaets?populate[0]=icon&pagination[pageSize]=100&_t=${Date.now()}`, 'Qualitaeten'),
-            fetchAndHandle(`${STRAPI_BASE_URL}/api/technologies?populate[0]=icon&pagination[pageSize]=100&_t=${Date.now()}`, 'Technologien'),
-            fetchAndHandle(`${STRAPI_BASE_URL}/api/tuerens?populate[0]=icon&pagination[pageSize]=100&_t=${Date.now()}`, 'Tueren'),
-            fetchAndHandle(`${STRAPI_BASE_URL}/api/funktionens?populate[0]=icon&pagination[pageSize]=100&_t=${Date.now()}`, 'Funktionen'),
-            fetchAndHandle(`${STRAPI_BASE_URL}/api/questions?populate[0]=objekttyps&populate[1]=anlagentyps&populate[2]=qualitaets&populate[3]=technologies&populate[4]=tuerens&populate[5]=funktionens&populate[6]=zylinders&populate[7]=zylinders.objekttyps&populate[8]=zylinders.anlagentyps&populate[9]=zylinders.technologies&populate[10]=zylinders.qualitaets&populate[11]=zylinders.funktionens&pagination[pageSize]=100&publicationState=preview&sort=order:asc&_t=${Date.now()}`, 'Questions')
+        // Promise.allSettled verwenden, damit einzelne Fehler nicht alles stoppen
+        const results = await Promise.allSettled([
+            fetchAndHandle(`${STRAPI_BASE_URL}/api/objekttyps?populate[0]=tuerens&populate[1]=icon&pagination[pageSize]=100&_t=${Date.now()}`, 'Objekttypen').catch(err => { console.error('Fehler Objekttypen:', err); return null; }),
+            fetchAndHandle(`${STRAPI_BASE_URL}/api/anlagentyps?populate[0]=icon&pagination[pageSize]=100&_t=${Date.now()}`, 'Anlagentypen').catch(err => { console.error('Fehler Anlagentypen:', err); return null; }),
+            fetchAndHandle(`${STRAPI_BASE_URL}/api/qualitaets?populate[0]=icon&pagination[pageSize]=100&_t=${Date.now()}`, 'Qualitaeten').catch(err => { console.error('Fehler Qualitaeten:', err); return null; }),
+            fetchAndHandle(`${STRAPI_BASE_URL}/api/technologies?populate[0]=icon&pagination[pageSize]=100&_t=${Date.now()}`, 'Technologien').catch(err => { console.error('Fehler Technologien:', err); return null; }),
+            fetchAndHandle(`${STRAPI_BASE_URL}/api/tuerens?populate[0]=icon&pagination[pageSize]=100&_t=${Date.now()}`, 'Tueren').catch(err => { console.error('Fehler Tueren:', err); return null; }),
+            fetchAndHandle(`${STRAPI_BASE_URL}/api/funktionens?populate[0]=icon&pagination[pageSize]=100&_t=${Date.now()}`, 'Funktionen').catch(err => { console.error('Fehler Funktionen:', err); return null; }),
+            fetchAndHandle(`${STRAPI_BASE_URL}/api/questions?populate[0]=objekttyps&populate[1]=anlagentyps&populate[2]=qualitaets&populate[3]=technologies&populate[4]=tuerens&populate[5]=funktionens&populate[6]=zylinders&populate[7]=zylinders.objekttyps&populate[8]=zylinders.anlagentyps&populate[9]=zylinders.technologies&populate[10]=zylinders.qualitaets&populate[11]=zylinders.funktionens&pagination[pageSize]=100&publicationState=preview&sort=order:asc&_t=${Date.now()}`, 'Questions').catch(err => { console.error('Fehler Questions:', err); return null; })
         ]);
+        
+        // Extrahiere Responses aus den Results
+        const objekttypResponse = results[0].status === 'fulfilled' ? results[0].value : null;
+        const anlagentypResponse = results[1].status === 'fulfilled' ? results[1].value : null;
+        const qualitaetResponse = results[2].status === 'fulfilled' ? results[2].value : null;
+        const technologieResponse = results[3].status === 'fulfilled' ? results[3].value : null;
+        const tuerenResponse = results[4].status === 'fulfilled' ? results[4].value : null;
+        const funktionenResponse = results[5].status === 'fulfilled' ? results[5].value : null;
+        const questionsResponse = results[6].status === 'fulfilled' ? results[6].value : null;
         
         // Debug: Speichere API-Responses
         debugData.apiResponses = {
