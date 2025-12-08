@@ -2276,13 +2276,23 @@ async function savePlanToCRM() {
         
         console.log('✅ Schließplan gespeichert:', planDataResult);
         
-        // 5. Erfolgsmeldung
+        // 5. Automatisch in Mediathek speichern
+        try {
+            showSaveStatus('loading', 'Schließplan wird in Mediathek gespeichert...');
+            await saveToMediathek(supabaseClient, planDataResult.id, kundeId, planDataResult);
+            console.log('✅ Schließplan erfolgreich in Mediathek gespeichert');
+        } catch (mediathekError) {
+            console.warn('⚠️ Fehler beim Speichern in Mediathek (Plan ist trotzdem gespeichert):', mediathekError);
+            // Fehler wird nicht weitergegeben, da der Plan bereits gespeichert ist
+        }
+        
+        // 6. Erfolgsmeldung
         const kundenummer = kundeInfo?.kundenummer || 'Wird generiert...';
-        showSaveStatus('success', `Schließplan erfolgreich gespeichert! ${kundenummer ? 'Kundenummer: ' + kundenummer : ''}`);
+        showSaveStatus('success', `Schließplan erfolgreich gespeichert und in Mediathek verfügbar! ${kundenummer ? 'Kundenummer: ' + kundenummer : ''}`);
         
         // Optional: Weiterleitung oder Dialog
         setTimeout(() => {
-            alert(`Vielen Dank, ${vorname}! Ihr Schließplan wurde gespeichert.${kundenummer ? ' Ihre Kundenummer: ' + kundenummer : ''}`);
+            alert(`Vielen Dank, ${vorname}! Ihr Schließplan wurde gespeichert und ist jetzt in Ihrer Mediathek verfügbar.${kundenummer ? ' Ihre Kundenummer: ' + kundenummer : ''}`);
         }, 1000);
         
     } catch (error) {
@@ -2305,6 +2315,246 @@ function skipCustomerForm() {
     }
 }
 
+// --- MEDIATHEK FUNKTIONEN ---
+
+// Generiere HTML-String für Schließplan (wiederverwendbar)
+function generateSchliessplanHTML() {
+    // Aktualisiere planData mit aktuellen Werten aus dem DOM
+    const rows = planData.rows.map(row => {
+        const rowElement = document.querySelector(`tr[data-row-id="${row.id}"]`);
+        if (rowElement) {
+            const typSelect = rowElement.querySelector('select[onchange*="typ"]');
+            if (typSelect) row.typ = typSelect.value;
+            
+            const systemSelect = rowElement.querySelector('select[onchange*="systemId"]');
+            if (systemSelect) row.systemId = parseInt(systemSelect.value) || row.systemId;
+            
+            const techSelect = rowElement.querySelector('select[onchange*="techType"]');
+            if (techSelect) row.techType = techSelect.value;
+            
+            const massInputs = rowElement.querySelectorAll('input[onchange*="mass"]');
+            massInputs.forEach(input => {
+                const onChangeStr = input.getAttribute('onchange') || '';
+                if (onChangeStr.includes('massA')) row.massA = input.value || row.massA;
+                if (onChangeStr.includes('massI')) row.massI = input.value || row.massI;
+            });
+            
+            const anzahlInput = rowElement.querySelector('input[type="number"]');
+            if (anzahlInput) row.anzahl = parseInt(anzahlInput.value) || row.anzahl;
+            
+            const tuerInput = rowElement.querySelector('input[placeholder*="Bezeichnung"]');
+            if (tuerInput && tuerInput.value) row.tuer = tuerInput.value;
+            
+            const matrixCells = rowElement.querySelectorAll('.schliessmatrix-cell');
+            if (matrixCells.length > 0) {
+                row.matrix = Array.from(matrixCells).map(cell => cell.classList.contains('checked'));
+            }
+        }
+        return row;
+    });
+
+    const getSystemName = (systemId) => {
+        const system = allCylinderSystems.find(s => s.id === systemId);
+        return system ? system.name : 'Unbekannt';
+    };
+
+    const getFunctionNames = (funktionen) => {
+        return Object.keys(funktionen)
+            .filter(key => funktionen[key])
+            .map(key => ALL_FEATURES[key] ? ALL_FEATURES[key].name : key)
+            .join(', ');
+    };
+
+    const isMixedSystem = userAnswers.technologie === 'Gemischte Anlage';
+
+    let tableRows = '';
+    rows.forEach(row => {
+        const systemName = getSystemName(row.systemId);
+        const functionNames = getFunctionNames(row.funktionen);
+        const techType = row.techType || 'mechanisch';
+        const bgColor = techType === 'elektronisch' ? '#e0f2fe' : 'transparent';
+
+        let matrixCells = '';
+        planData.keys.forEach((key, keyIndex) => {
+            const checked = row.matrix && row.matrix[keyIndex] ? '✓' : '';
+            matrixCells += `<td style="border: 1px solid #ccc; text-align: center; padding: 8px;">${checked}</td>`;
+        });
+
+        const techCell = isMixedSystem ? 
+            `<td style="border: 1px solid #ccc; padding: 8px; background-color: ${bgColor};">${techType === 'elektronisch' ? 'Elektronisch' : 'Mechanisch'}</td>` : 
+            '';
+
+        tableRows += `
+            <tr style="background-color: ${bgColor};">
+                <td style="border: 1px solid #ccc; padding: 8px; font-weight: bold; text-align: center;">${row.pos}</td>
+                <td style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">${row.tuer || ''}</td>
+                <td style="border: 1px solid #ccc; padding: 8px;">${row.typ || ''}</td>
+                <td style="border: 1px solid #ccc; padding: 8px;">${systemName}</td>
+                ${techCell}
+                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;">${row.massA || ''}/${row.massI || ''}</td>
+                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;">${row.anzahl || 1}</td>
+                <td style="border: 1px solid #ccc; padding: 8px;">${functionNames || '-'}</td>
+                <td style="border: 1px solid #ccc; padding: 8px; background-color: #f5f5f5; font-weight: bold;">${row.tuer || ''}</td>
+                ${matrixCells}
+            </tr>
+        `;
+    });
+
+    // Aktualisiere Schlüsselgruppen-Namen
+    const keyInputs = document.querySelectorAll('#schluessel-header-dynamic input');
+    if (keyInputs.length > 0) {
+        keyInputs.forEach((input, index) => {
+            if (planData.keys[index] && input.value) {
+                planData.keys[index].name = input.value;
+            }
+        });
+    }
+    
+    let keyHeaders = '';
+    planData.keys.forEach(key => {
+        keyHeaders += `<th style="border: 1px solid #ccc; padding: 8px; background-color: #1a3d5c; color: white; transform: rotate(-90deg); white-space: nowrap; min-width: 50px; height: 150px;">${key.name}</th>`;
+    });
+
+    // HTML-Dokument erstellen
+    return `<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schließplan Export</title>
+    <style>
+        body { font-family: 'Inter', Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
+        .container { background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 1400px; margin: 0 auto; }
+        h1 { color: #1a3d5c; text-align: center; margin-bottom: 30px; font-size: 28px; }
+        .info-box { background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid #1a3d5c; }
+        .info-box p { margin: 5px 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+        th { background-color: #1a3d5c; color: white; padding: 10px 8px; text-align: center; border: 1px solid #ccc; font-weight: bold; }
+        .header-main { background-color: #2a4d6c; font-size: 14px; padding: 12px; }
+        td { border: 1px solid #ccc; padding: 8px; }
+        @media print { body { background-color: white; margin: 0; } .container { box-shadow: none; padding: 10px; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Ihr persönlicher Schließplan</h1>
+        <div class="info-box">
+            <p><strong>Erstellt am:</strong> ${new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+            ${userAnswers.objekttyp ? `<p><strong>Objekttyp:</strong> ${userAnswers.objekttyp}</p>` : ''}
+            ${userAnswers.anlagentyp ? `<p><strong>Anlagentyp:</strong> ${userAnswers.anlagentyp}</p>` : ''}
+            ${userAnswers.qualitaet ? `<p><strong>Qualität:</strong> ${userAnswers.qualitaet}</p>` : ''}
+            ${userAnswers.technologie ? `<p><strong>Technologie:</strong> ${userAnswers.technologie}</p>` : ''}
+        </div>
+        ${isMixedSystem ? `<div class="legend"><strong>Legende:</strong> <span class="legend-item"><span class="legend-color"></span>Mechanisch</span> <span class="legend-item"><span class="legend-color elektronisch"></span>Elektronisch</span></div>` : ''}
+        <table>
+            <thead>
+                <tr>
+                    <th colspan="${isMixedSystem ? '8' : '7'}" class="header-main">Schließzylinder</th>
+                    <td style="border: none; background-color: #ddd;"></td>
+                    <th colspan="${planData.keys.length + 1}" class="header-main">Schlüsselmatrix</th>
+                </tr>
+                <tr>
+                    <th>POS</th><th>Türbezeichnung</th><th>Zylindertyp</th><th>System</th>
+                    ${isMixedSystem ? '<th>Technologie</th>' : ''}
+                    <th>Maße A/I</th><th>Anzahl</th><th>Funktionen</th>
+                    <td style="border: none; background-color: #ddd;"></td>
+                    <th>Schlüsselgruppen</th>
+                    ${keyHeaders}
+                </tr>
+            </thead>
+            <tbody>${tableRows}</tbody>
+        </table>
+    </div>
+</body>
+</html>`;
+}
+
+// Speichere Schließplan in Mediathek
+async function saveToMediathek(supabaseClient, schliessplanId, kundeId, schliessplanData) {
+    try {
+        // 1. HTML-Inhalt generieren
+        const htmlContent = generateSchliessplanHTML();
+        const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+        
+        // 2. Dateiname erstellen
+        const timestamp = new Date().toISOString().split('T')[0];
+        const fileName = `schliessplan-${timestamp}-${Date.now()}.html`;
+        const filePath = `${kundeId}/${schliessplanId}/${fileName}`;
+        
+        // 3. Datei in Supabase Storage hochladen
+        const { data: uploadData, error: uploadError } = await supabaseClient.storage
+            .from('schliessplaene')
+            .upload(filePath, blob, {
+                contentType: 'text/html;charset=utf-8',
+                upsert: true
+            });
+        
+        if (uploadError) {
+            throw new Error(`Upload-Fehler: ${uploadError.message}`);
+        }
+        
+        // 4. Öffentliche URL generieren
+        const { data: { publicUrl } } = supabaseClient.storage
+            .from('schliessplaene')
+            .getPublicUrl(filePath);
+        
+        // 5. Metadaten in Mediathek-Tabelle speichern
+        const { data: mediathekEntry, error: dbError } = await supabaseClient
+            .from('mediathek')
+            .insert([{
+                kunde_id: kundeId,
+                schliessplan_id: schliessplanId,
+                datei_name: fileName,
+                datei_typ: 'html',
+                datei_url: publicUrl,
+                datei_groesse: blob.size,
+                mime_type: 'text/html',
+                beschreibung: `Schließplan Export - ${schliessplanData.name || 'Schließplan'} - ${new Date().toLocaleDateString('de-DE')}`,
+                kategorie: 'exportiert',
+                tags: [schliessplanData.objekttyp, schliessplanData.technologie].filter(Boolean)
+            }])
+            .select()
+            .single();
+        
+        if (dbError) {
+            throw new Error(`Datenbank-Fehler: ${dbError.message}`);
+        }
+        
+        // 6. Schließplan mit Mediathek-ID verknüpfen
+        const exportDateien = [
+            {
+                typ: 'html',
+                url: publicUrl,
+                datei_name: fileName,
+                erstellt_am: new Date().toISOString()
+            }
+        ];
+        
+        await supabaseClient
+            .from('schliessplaene')
+            .update({ 
+                mediathek_id: mediathekEntry.id,
+                export_dateien: exportDateien
+            })
+            .eq('id', schliessplanId);
+        
+        console.log('✅ Schließplan erfolgreich in Mediathek gespeichert:', {
+            mediathekId: mediathekEntry.id,
+            fileUrl: publicUrl
+        });
+        
+        return {
+            success: true,
+            mediathekId: mediathekEntry.id,
+            fileUrl: publicUrl
+        };
+        
+    } catch (error) {
+        console.error('❌ Fehler beim Speichern in Mediathek:', error);
+        throw error;
+    }
+}
+
 // --- HTML EXPORT FUNKTION ---
 function exportSchliessplanToHTML() {
     try {
@@ -2322,9 +2572,43 @@ function exportSchliessplanToHTML() {
             return;
         }
 
-        // Hole aktuelle Werte aus den Eingabefeldern (direkt aus dem DOM)
-        const rows = planData.rows.map(row => {
-            const rowElement = document.querySelector(`tr[data-row-id="${row.id}"]`);
+        // Verwende die wiederverwendbare Funktion
+        const htmlContent = generateSchliessplanHTML();
+        
+        // Erstelle Blob und Download
+        const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Schließplan_${new Date().toISOString().split('T')[0]}.html`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        // Button wieder aktivieren
+        exportBtn.disabled = false;
+        exportBtn.innerHTML = originalText;
+
+        // Erfolgsmeldung
+        showSaveStatus('success', 'HTML erfolgreich erstellt und heruntergeladen! Öffnen Sie die Datei im Browser und drucken Sie sie als PDF (Strg+P).');
+
+    } catch (error) {
+        console.error('Fehler beim HTML-Export:', error);
+        alert('Fehler beim Erstellen des HTML-Exports: ' + error.message);
+        
+        // Button wieder aktivieren
+        const exportBtn = document.getElementById('export-html-btn');
+        if (exportBtn) {
+            exportBtn.disabled = false;
+            exportBtn.innerHTML = '<i class="fas fa-file-code mr-2"></i> Als HTML exportieren';
+        }
+    }
+}
+
+// Die exportSchliessplanToHTML Funktion verwendet jetzt generateSchliessplanHTML() (siehe oben)
+
+// --- EVENT LISTENERS ---
             if (rowElement) {
                 // Lese alle aktuellen Werte aus den Eingabefeldern
                 const cells = rowElement.querySelectorAll('td');
