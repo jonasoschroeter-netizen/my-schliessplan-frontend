@@ -2816,39 +2816,62 @@ async function handleRegister(event) {
         console.log('✅ Benutzer erfolgreich registriert:', authData.user.id);
         
         // 2. Kunden-Eintrag in kunden Tabelle erstellen
-        // Verwende die create_kunde_on_signup Funktion oder direkten Insert
-        const { data: kundeData, error: kundeError } = await supabaseClient
-            .from('kunden')
-            .insert([{
-                user_id: authData.user.id,
-                email: email.toLowerCase().trim(),
-                vorname: vorname,
-                nachname: nachname,
-                telefon: telefon || null,
-                status: 'aktiv'
-            }])
-            .select()
-            .single();
+        // Verwende IMMER die create_kunde_on_signup Funktion, da sie E-Mail-Duplikate behandelt
+        const { data: kundeId, error: rpcError } = await supabaseClient.rpc('create_kunde_on_signup', {
+            p_user_id: authData.user.id,
+            p_email: email.toLowerCase().trim(),
+            p_vorname: vorname,
+            p_nachname: nachname,
+            p_telefon: telefon || null
+        });
         
-        if (kundeError) {
-            // Falls Insert fehlschlägt, versuche die Funktion
-            console.warn('⚠️ Direkter Insert fehlgeschlagen, versuche Funktion:', kundeError);
+        if (rpcError) {
+            // Falls Funktion fehlschlägt, versuche direkten Insert als Fallback
+            console.warn('⚠️ Funktion fehlgeschlagen, versuche direkten Insert:', rpcError);
             
-            const { data: kundeId, error: rpcError } = await supabaseClient.rpc('create_kunde_on_signup', {
-                p_user_id: authData.user.id,
-                p_email: email.toLowerCase().trim(),
-                p_vorname: vorname,
-                p_nachname: nachname,
-                p_telefon: telefon || null
-            });
+            const { data: kundeData, error: kundeError } = await supabaseClient
+                .from('kunden')
+                .insert([{
+                    user_id: authData.user.id,
+                    email: email.toLowerCase().trim(),
+                    vorname: vorname,
+                    nachname: nachname,
+                    telefon: telefon || null,
+                    status: 'aktiv'
+                }])
+                .select()
+                .single();
             
-            if (rpcError) {
-                throw new Error(`Fehler beim Erstellen des Kunden-Eintrags: ${rpcError.message}`);
+            if (kundeError) {
+                // Wenn auch Insert fehlschlägt, könnte E-Mail bereits existieren
+                if (kundeError.code === '23505' && kundeError.message.includes('email')) {
+                    // Versuche, bestehenden Eintrag zu aktualisieren
+                    const { data: existingKunde, error: updateError } = await supabaseClient
+                        .from('kunden')
+                        .update({
+                            user_id: authData.user.id,
+                            vorname: vorname,
+                            nachname: nachname,
+                            telefon: telefon || null,
+                            aktualisiert_am: new Date().toISOString()
+                        })
+                        .eq('email', email.toLowerCase().trim())
+                        .select()
+                        .single();
+                    
+                    if (updateError) {
+                        throw new Error(`Fehler beim Aktualisieren des Kunden-Eintrags: ${updateError.message}`);
+                    }
+                    
+                    console.log('✅ Bestehender Kunden-Eintrag aktualisiert:', existingKunde);
+                } else {
+                    throw new Error(`Fehler beim Erstellen des Kunden-Eintrags: ${kundeError.message}`);
+                }
+            } else {
+                console.log('✅ Kunden-Eintrag erstellt (via direkten Insert):', kundeData);
             }
-            
-            console.log('✅ Kunden-Eintrag erstellt (via Funktion):', kundeId);
         } else {
-            console.log('✅ Kunden-Eintrag erstellt:', kundeData);
+            console.log('✅ Kunden-Eintrag erstellt/aktualisiert (via Funktion):', kundeId);
         }
         
         // 3. Erfolgsmeldung
