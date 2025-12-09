@@ -268,6 +268,9 @@ const loadingStatus = {
             setTimeout(() => {
                 loadingScreen.style.display = 'none';
                 
+                // Initialisiere Auth Screen Event Listeners
+                initializeAuthScreen();
+                
                 // Zeige Auth Screen
                 if (authScreen) {
                     authScreen.classList.remove('hidden');
