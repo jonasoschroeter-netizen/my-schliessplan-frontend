@@ -2735,6 +2735,50 @@ function showRegisterStatus(type, message) {
     statusDiv.textContent = message;
 }
 
+function showLoginModal() {
+    const modal = document.getElementById('login-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.style.opacity = '0';
+        setTimeout(() => {
+            modal.style.opacity = '1';
+        }, 10);
+    }
+}
+
+function hideLoginModal() {
+    const modal = document.getElementById('login-modal');
+    if (modal) {
+        modal.style.opacity = '0';
+        setTimeout(() => {
+            modal.classList.add('hidden');
+            // Formular zurücksetzen
+            const form = document.getElementById('login-form');
+            if (form) form.reset();
+            const statusDiv = document.getElementById('login-status');
+            if (statusDiv) {
+                statusDiv.classList.add('hidden');
+                statusDiv.textContent = '';
+            }
+        }, 300);
+    }
+}
+
+function showLoginStatus(type, message) {
+    const statusDiv = document.getElementById('login-status');
+    if (!statusDiv) return;
+    
+    statusDiv.classList.remove('hidden', 'bg-green-100', 'border-green-400', 'text-green-700', 'bg-red-100', 'border-red-400', 'text-red-700');
+    
+    if (type === 'success') {
+        statusDiv.classList.add('bg-green-100', 'border', 'border-green-400', 'text-green-700');
+    } else {
+        statusDiv.classList.add('bg-red-100', 'border', 'border-red-400', 'text-red-700');
+    }
+    
+    statusDiv.textContent = message;
+}
+
 // Registrierungs-Funktion mit Supabase Auth
 async function handleRegister(event) {
     event.preventDefault();
@@ -3007,6 +3051,80 @@ function initializeAuthScreen() {
 
     if (loginForm) {
         loginForm.addEventListener('submit', handleLogin);
+    }
+}
+
+// Login-Funktion
+async function handleLogin(event) {
+    event.preventDefault();
+    
+    const email = document.getElementById('login-email')?.value.trim();
+    const password = document.getElementById('login-password')?.value;
+    const submitBtn = document.getElementById('login-submit-btn');
+    
+    // Validierung
+    if (!email || !password) {
+        showLoginStatus('error', 'Bitte geben Sie E-Mail und Passwort ein.');
+        return;
+    }
+    
+    if (!isValidEmail(email)) {
+        showLoginStatus('error', 'Bitte geben Sie eine gültige E-Mail-Adresse ein.');
+        return;
+    }
+    
+    // Button deaktivieren
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Einloggen...';
+    }
+    
+    try {
+        // Stelle sicher, dass Supabase geladen ist
+        const supabaseClient = await ensureSupabaseReady();
+        
+        if (!supabaseClient) {
+            throw new Error('Supabase Client nicht verfügbar. Bitte laden Sie die Seite neu.');
+        }
+        
+        // Login mit Supabase Auth
+        const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
+            email: email,
+            password: password
+        });
+        
+        if (authError) {
+            if (authError.message.includes('Invalid login credentials') || authError.message.includes('Invalid password')) {
+                throw new Error('E-Mail oder Passwort ist falsch. Bitte versuchen Sie es erneut.');
+            }
+            throw new Error(`Login-Fehler: ${authError.message}`);
+        }
+        
+        if (!authData.user) {
+            throw new Error('Login fehlgeschlagen: Keine Benutzerdaten erhalten');
+        }
+        
+        console.log('✅ Benutzer erfolgreich eingeloggt:', authData.user.id);
+        
+        // Erfolgsmeldung
+        showLoginStatus('success', 'Erfolgreich eingeloggt!');
+        
+        // Modal schließen und Auth Screen ausblenden
+        setTimeout(() => {
+            hideLoginModal();
+            hideAuthScreen();
+            initializeQuestionnaire(); // Fragebogen starten
+        }, 1000);
+        
+    } catch (error) {
+        console.error('❌ Fehler beim Login:', error);
+        showLoginStatus('error', `Fehler: ${error.message}`);
+    } finally {
+        // Button wieder aktivieren
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i><span>Einloggen</span>';
+        }
     }
 }
 
