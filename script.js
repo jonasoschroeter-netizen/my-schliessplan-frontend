@@ -2687,16 +2687,204 @@ function hideAuthScreen() {
 }
 
 // Auth Screen Event Listeners
+// --- REGISTRIERUNGS-MODAL FUNKTIONEN ---
+function showRegisterModal() {
+    const modal = document.getElementById('register-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.style.opacity = '0';
+        setTimeout(() => {
+            modal.style.opacity = '1';
+        }, 10);
+    }
+}
+
+function hideRegisterModal() {
+    const modal = document.getElementById('register-modal');
+    if (modal) {
+        modal.style.opacity = '0';
+        setTimeout(() => {
+            modal.classList.add('hidden');
+            // Formular zurücksetzen
+            const form = document.getElementById('register-form');
+            if (form) form.reset();
+            const statusDiv = document.getElementById('register-status');
+            if (statusDiv) {
+                statusDiv.classList.add('hidden');
+                statusDiv.textContent = '';
+            }
+        }, 300);
+    }
+}
+
+function showRegisterStatus(type, message) {
+    const statusDiv = document.getElementById('register-status');
+    if (!statusDiv) return;
+    
+    statusDiv.classList.remove('hidden', 'bg-green-100', 'border-green-400', 'text-green-700', 'bg-red-100', 'border-red-400', 'text-red-700');
+    
+    if (type === 'success') {
+        statusDiv.classList.add('bg-green-100', 'border', 'border-green-400', 'text-green-700');
+    } else {
+        statusDiv.classList.add('bg-red-100', 'border', 'border-red-400', 'text-red-700');
+    }
+    
+    statusDiv.textContent = message;
+}
+
+// Registrierungs-Funktion mit Supabase Auth
+async function handleRegister(event) {
+    event.preventDefault();
+    
+    const vorname = document.getElementById('register-vorname')?.value.trim();
+    const nachname = document.getElementById('register-nachname')?.value.trim();
+    const email = document.getElementById('register-email')?.value.trim();
+    const password = document.getElementById('register-password')?.value;
+    const passwordConfirm = document.getElementById('register-password-confirm')?.value;
+    const telefon = document.getElementById('register-telefon')?.value.trim();
+    const submitBtn = document.getElementById('register-submit-btn');
+    
+    // Validierung
+    if (!vorname || !nachname || !email || !password) {
+        showRegisterStatus('error', 'Bitte füllen Sie alle Pflichtfelder aus.');
+        return;
+    }
+    
+    if (!isValidEmail(email)) {
+        showRegisterStatus('error', 'Bitte geben Sie eine gültige E-Mail-Adresse ein.');
+        return;
+    }
+    
+    if (password.length < 8) {
+        showRegisterStatus('error', 'Das Passwort muss mindestens 8 Zeichen lang sein.');
+        return;
+    }
+    
+    if (password !== passwordConfirm) {
+        showRegisterStatus('error', 'Die Passwörter stimmen nicht überein.');
+        return;
+    }
+    
+    // Prüfe Passwort-Stärke (optional, aber empfohlen)
+    const hasUpperCase = /[A-Z]/.test(password);
+    const hasLowerCase = /[a-z]/.test(password);
+    const hasNumbers = /[0-9]/.test(password);
+    
+    if (!hasUpperCase || !hasLowerCase || !hasNumbers) {
+        showRegisterStatus('error', 'Das Passwort muss Groß- und Kleinbuchstaben sowie Zahlen enthalten.');
+        return;
+    }
+    
+    // Button deaktivieren
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Registrierung läuft...';
+    }
+    
+    try {
+        // Stelle sicher, dass Supabase geladen ist
+        const supabaseClient = await ensureSupabaseReady();
+        
+        if (!supabaseClient) {
+            throw new Error('Supabase Client nicht verfügbar. Bitte laden Sie die Seite neu.');
+        }
+        
+        // 1. Registrierung mit Supabase Auth (Passwort wird automatisch gehashed!)
+        const { data: authData, error: authError } = await supabaseClient.auth.signUp({
+            email: email,
+            password: password,
+            options: {
+                data: {
+                    vorname: vorname,
+                    nachname: nachname,
+                    telefon: telefon || null
+                }
+            }
+        });
+        
+        if (authError) {
+            throw new Error(`Registrierungsfehler: ${authError.message}`);
+        }
+        
+        if (!authData.user) {
+            throw new Error('Registrierung fehlgeschlagen: Keine Benutzerdaten erhalten');
+        }
+        
+        console.log('✅ Benutzer erfolgreich registriert:', authData.user.id);
+        
+        // 2. Kunden-Eintrag in kunden Tabelle erstellen
+        // Verwende die create_kunde_on_signup Funktion oder direkten Insert
+        const { data: kundeData, error: kundeError } = await supabaseClient
+            .from('kunden')
+            .insert([{
+                user_id: authData.user.id,
+                email: email.toLowerCase().trim(),
+                vorname: vorname,
+                nachname: nachname,
+                telefon: telefon || null,
+                status: 'aktiv'
+            }])
+            .select()
+            .single();
+        
+        if (kundeError) {
+            // Falls Insert fehlschlägt, versuche die Funktion
+            console.warn('⚠️ Direkter Insert fehlgeschlagen, versuche Funktion:', kundeError);
+            
+            const { data: kundeId, error: rpcError } = await supabaseClient.rpc('create_kunde_on_signup', {
+                p_user_id: authData.user.id,
+                p_email: email.toLowerCase().trim(),
+                p_vorname: vorname,
+                p_nachname: nachname,
+                p_telefon: telefon || null
+            });
+            
+            if (rpcError) {
+                throw new Error(`Fehler beim Erstellen des Kunden-Eintrags: ${rpcError.message}`);
+            }
+            
+            console.log('✅ Kunden-Eintrag erstellt (via Funktion):', kundeId);
+        } else {
+            console.log('✅ Kunden-Eintrag erstellt:', kundeData);
+        }
+        
+        // 3. Erfolgsmeldung
+        showRegisterStatus('success', 'Registrierung erfolgreich! Sie werden jetzt eingeloggt...');
+        
+        // 4. Modal schließen und Auth Screen ausblenden
+        setTimeout(() => {
+            hideRegisterModal();
+            hideAuthScreen();
+            // Fragebogen wird automatisch angezeigt
+        }, 1500);
+        
+    } catch (error) {
+        console.error('❌ Fehler bei der Registrierung:', error);
+        showRegisterStatus('error', `Fehler: ${error.message}`);
+    } finally {
+        // Button wieder aktivieren
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-user-plus"></i><span>Registrieren</span>';
+        }
+    }
+}
+
 function initializeAuthScreen() {
     const registerBtn = document.getElementById('auth-register-btn');
     const loginBtn = document.getElementById('auth-login-btn');
     const guestBtn = document.getElementById('auth-guest-btn');
+    const registerCloseBtn = document.getElementById('register-close-btn');
+    const registerCancelBtn = document.getElementById('register-cancel-btn');
+    const registerForm = document.getElementById('register-form');
     
     if (registerBtn) {
         registerBtn.addEventListener('click', () => {
             console.log('📝 Registrieren geklickt');
-            // TODO: Registrierungs-Modal öffnen
             hideAuthScreen();
+            setTimeout(() => {
+                showRegisterModal();
+            }, 300);
         });
     }
     
@@ -2714,6 +2902,25 @@ function initializeAuthScreen() {
             hideAuthScreen();
             // Fragebogen wird automatisch angezeigt
         });
+    }
+    
+    // Registrierungs-Modal Event Listeners
+    if (registerCloseBtn) {
+        registerCloseBtn.addEventListener('click', () => {
+            hideRegisterModal();
+            showAuthScreen();
+        });
+    }
+    
+    if (registerCancelBtn) {
+        registerCancelBtn.addEventListener('click', () => {
+            hideRegisterModal();
+            showAuthScreen();
+        });
+    }
+    
+    if (registerForm) {
+        registerForm.addEventListener('submit', handleRegister);
     }
 }
 
