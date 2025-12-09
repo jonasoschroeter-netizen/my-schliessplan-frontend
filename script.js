@@ -2792,6 +2792,28 @@ async function handleRegister(event) {
             throw new Error('Supabase Client nicht verfügbar. Bitte laden Sie die Seite neu.');
         }
         
+        // 0. PRÜFE OB E-MAIL BEREITS EXISTIERT
+        const { data: existingKunde, error: checkError } = await supabaseClient
+            .from('kunden')
+            .select('id, email, user_id')
+            .eq('email', email.toLowerCase().trim())
+            .single();
+        
+        if (existingKunde && existingKunde.user_id) {
+            // E-Mail existiert bereits UND hat einen user_id → Benutzer soll sich einloggen
+            hideRegisterModal();
+            showLoginStatus('error', 'Diese E-Mail ist bereits registriert. Bitte loggen Sie sich ein.');
+            setTimeout(() => {
+                showLoginModal();
+                // E-Mail in Login-Formular eintragen
+                const loginEmailInput = document.getElementById('login-email');
+                if (loginEmailInput) {
+                    loginEmailInput.value = email;
+                }
+            }, 500);
+            return;
+        }
+        
         // 1. Registrierung mit Supabase Auth (Passwort wird automatisch gehashed!)
         const { data: authData, error: authError } = await supabaseClient.auth.signUp({
             email: email,
@@ -2806,6 +2828,19 @@ async function handleRegister(event) {
         });
         
         if (authError) {
+            // Prüfe ob Fehler wegen bereits existierender E-Mail ist
+            if (authError.message.includes('already registered') || authError.message.includes('already exists')) {
+                hideRegisterModal();
+                showLoginStatus('error', 'Diese E-Mail ist bereits registriert. Bitte loggen Sie sich ein.');
+                setTimeout(() => {
+                    showLoginModal();
+                    const loginEmailInput = document.getElementById('login-email');
+                    if (loginEmailInput) {
+                        loginEmailInput.value = email;
+                    }
+                }, 500);
+                return;
+            }
             throw new Error(`Registrierungsfehler: ${authError.message}`);
         }
         
@@ -2917,8 +2952,10 @@ function initializeAuthScreen() {
     if (loginBtn) {
         loginBtn.addEventListener('click', () => {
             console.log('🔐 Einloggen geklickt');
-            // TODO: Login-Modal öffnen
             hideAuthScreen();
+            setTimeout(() => {
+                showLoginModal();
+            }, 300);
         });
     }
     
@@ -2947,6 +2984,29 @@ function initializeAuthScreen() {
     
     if (registerForm) {
         registerForm.addEventListener('submit', handleRegister);
+    }
+
+    // Login Modal Event Listeners
+    const loginCloseBtn = document.getElementById('login-close-btn');
+    const loginCancelBtn = document.getElementById('login-cancel-btn');
+    const loginForm = document.getElementById('login-form');
+
+    if (loginCloseBtn) {
+        loginCloseBtn.addEventListener('click', () => {
+            hideLoginModal();
+            showAuthScreen();
+        });
+    }
+
+    if (loginCancelBtn) {
+        loginCancelBtn.addEventListener('click', () => {
+            hideLoginModal();
+            showAuthScreen();
+        });
+    }
+
+    if (loginForm) {
+        loginForm.addEventListener('submit', handleLogin);
     }
 }
 
