@@ -257,14 +257,26 @@ const loadingStatus = {
         }
     },
     
-    // Loading Screen ausblenden
+    // Loading Screen ausblenden und Auth Screen zeigen
     hideLoadingScreen() {
         const loadingScreen = document.getElementById('loading-screen');
+        const authScreen = document.getElementById('auth-screen');
+        
         if (loadingScreen) {
             loadingScreen.style.opacity = '0';
             loadingScreen.style.transition = 'opacity 0.5s ease-out';
             setTimeout(() => {
                 loadingScreen.style.display = 'none';
+                
+                // Zeige Auth Screen
+                if (authScreen) {
+                    authScreen.classList.remove('hidden');
+                    authScreen.style.opacity = '0';
+                    authScreen.style.transition = 'opacity 0.5s ease-in';
+                    setTimeout(() => {
+                        authScreen.style.opacity = '1';
+                    }, 50);
+                }
             }, 500);
         }
     }
@@ -2649,6 +2661,61 @@ function exportSchliessplanToHTML() {
 }
 
 // Die exportSchliessplanToHTML Funktion verwendet jetzt generateSchliessplanHTML() (siehe oben)
+
+// --- AUTH SCREEN FUNKTIONEN ---
+function showAuthScreen() {
+    const authScreen = document.getElementById('auth-screen');
+    if (authScreen) {
+        authScreen.classList.remove('hidden');
+        authScreen.style.opacity = '0';
+        authScreen.style.transition = 'opacity 0.5s ease-in';
+        setTimeout(() => {
+            authScreen.style.opacity = '1';
+        }, 50);
+    }
+}
+
+function hideAuthScreen() {
+    const authScreen = document.getElementById('auth-screen');
+    if (authScreen) {
+        authScreen.style.opacity = '0';
+        authScreen.style.transition = 'opacity 0.5s ease-out';
+        setTimeout(() => {
+            authScreen.classList.add('hidden');
+        }, 500);
+    }
+}
+
+// Auth Screen Event Listeners
+function initializeAuthScreen() {
+    const registerBtn = document.getElementById('auth-register-btn');
+    const loginBtn = document.getElementById('auth-login-btn');
+    const guestBtn = document.getElementById('auth-guest-btn');
+    
+    if (registerBtn) {
+        registerBtn.addEventListener('click', () => {
+            console.log('📝 Registrieren geklickt');
+            // TODO: Registrierungs-Modal öffnen
+            hideAuthScreen();
+        });
+    }
+    
+    if (loginBtn) {
+        loginBtn.addEventListener('click', () => {
+            console.log('🔐 Einloggen geklickt');
+            // TODO: Login-Modal öffnen
+            hideAuthScreen();
+        });
+    }
+    
+    if (guestBtn) {
+        guestBtn.addEventListener('click', () => {
+            console.log('👤 Als Gast fortfahren geklickt');
+            hideAuthScreen();
+            // Fragebogen wird automatisch angezeigt
+        });
+    }
+}
 
 // --- EVENT LISTENERS ---
 elements.nextBtn.addEventListener('click', handleNext);

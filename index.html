@@ -193,6 +193,52 @@
             </div>
         </div>
     </div>
+
+    <!-- Auth Selection Screen -->
+    <div id="auth-screen" class="fixed inset-0 bg-gradient-to-br from-gray-50 to-gray-100 z-40 flex items-center justify-center hidden">
+        <div class="w-full max-w-md mx-auto p-8">
+            <div class="bg-white rounded-2xl shadow-2xl p-8 md:p-10">
+                <!-- Logo & Welcome -->
+                <div class="text-center mb-8">
+                    <div class="flex justify-center mb-4">
+                        <div class="w-16 h-16 bg-[#1a3d5c] rounded-full flex items-center justify-center">
+                            <i class="fas fa-key text-white text-2xl"></i>
+                        </div>
+                    </div>
+                    <h2 class="text-3xl font-bold text-gray-800 mb-2">Willkommen</h2>
+                    <p class="text-gray-600">Wählen Sie, wie Sie fortfahren möchten</p>
+                </div>
+
+                <!-- Options -->
+                <div class="space-y-4">
+                    <!-- Registrieren -->
+                    <button id="auth-register-btn" class="w-full bg-[#1a3d5c] hover:bg-[#143149] text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+                        <i class="fas fa-user-plus text-xl"></i>
+                        <span class="text-lg">Registrieren</span>
+                    </button>
+
+                    <!-- Einloggen -->
+                    <button id="auth-login-btn" class="w-full bg-white hover:bg-gray-50 text-[#1a3d5c] font-semibold py-4 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-3 border-2 border-[#1a3d5c] shadow-md hover:shadow-lg transform hover:-translate-y-0.5">
+                        <i class="fas fa-sign-in-alt text-xl"></i>
+                        <span class="text-lg">Einloggen</span>
+                    </button>
+
+                    <!-- Als Gast fortfahren -->
+                    <button id="auth-guest-btn" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-4 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-3 shadow-sm hover:shadow-md transform hover:-translate-y-0.5">
+                        <i class="fas fa-user-circle text-xl"></i>
+                        <span class="text-lg">Als Gast fortfahren</span>
+                    </button>
+                </div>
+
+                <!-- Info Text -->
+                <div class="mt-6 text-center">
+                    <p class="text-sm text-gray-500">
+                        Als Gast können Sie Schließpläne erstellen, aber nicht speichern.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <!-- Main Content -->
     <div class="w-full max-w-7xl mx-auto bg-white rounded-2xl shadow-xl p-6 md:p-10">
