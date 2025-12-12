@@ -3776,10 +3776,30 @@ function initializeUserMenu() {
 // Prüfe ob Benutzer bereits eingeloggt ist beim Laden
 async function checkAuthState() {
     try {
+        // Prüfe nur auf Hauptseite (/), nicht auf /start
+        const currentPath = window.location.pathname;
+        if (currentPath === '/start' || currentPath === '/start.html') {
+            // Auf /start Seite → Prüfe Auth nur für User-Menü, keine Weiterleitung
+            const supabaseClient = await ensureSupabaseReady();
+            if (supabaseClient) {
+                const { data: { user }, error } = await supabaseClient.auth.getUser();
+                if (!error && user) {
+                    showUserMenu(user);
+                }
+            }
+            return;
+        }
+        
+        // Auf Hauptseite (/)
         const supabaseClient = await ensureSupabaseReady();
         if (supabaseClient) {
             const { data: { user }, error } = await supabaseClient.auth.getUser();
             if (!error && user) {
+                // Eingeloggt auf Hauptseite → Weiterleitung zu Dashboard
+                if (currentPath === '/' || currentPath === '/index.html') {
+                    window.location.href = '/dashboard';
+                    return;
+                }
                 console.log('✅ Benutzer bereits eingeloggt:', user.id);
                 showUserMenu(user);
             } else {
