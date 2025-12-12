@@ -3151,17 +3151,34 @@ async function handleLogin(event) {
 }
 
 // --- EVENT LISTENERS ---
-elements.nextBtn.addEventListener('click', handleNext);
-elements.prevBtn.addEventListener('click', handlePrev);
-elements.addRowBtn.addEventListener('click', addSchliessplanRow);
-elements.addKeyBtn.addEventListener('click', addKeyColumn);
-elements.backToQuestionsBtn.addEventListener('click', initializeQuestionnaire);
+// Prüfe ob Elemente existieren bevor Event Listener hinzugefügt werden
+if (elements.nextBtn) {
+    elements.nextBtn.addEventListener('click', handleNext);
+}
+if (elements.prevBtn) {
+    elements.prevBtn.addEventListener('click', handlePrev);
+}
+if (elements.addRowBtn) {
+    elements.addRowBtn.addEventListener('click', addSchliessplanRow);
+}
+if (elements.addKeyBtn) {
+    elements.addKeyBtn.addEventListener('click', addKeyColumn);
+}
+if (elements.backToQuestionsBtn) {
+    elements.backToQuestionsBtn.addEventListener('click', initializeQuestionnaire);
+}
 
 // PDF-Export Button Event Listener
 // Wird nach DOM-Load in initializeQuestionnaire registriert 
-elements.functionModal.addEventListener('click', (e) => { if (e.target === elements.functionModal) closeFunctionModal(); });
-elements.modalCancelBtn.addEventListener('click', closeFunctionModal);
-elements.modalSaveBtn.addEventListener('click', saveFunctions);
+if (elements.functionModal) {
+    elements.functionModal.addEventListener('click', (e) => { if (e.target === elements.functionModal) closeFunctionModal(); });
+}
+if (elements.modalCancelBtn) {
+    elements.modalCancelBtn.addEventListener('click', closeFunctionModal);
+}
+if (elements.modalSaveBtn) {
+    elements.modalSaveBtn.addEventListener('click', saveFunctions);
+}
 
 // CRM Form Submit
 const customerForm = document.getElementById('customer-form');

@@ -180,7 +180,111 @@
         </div>
 
         <div id="schliessplan-container" class="hidden">
-            <!-- Schließplan Tabelle wird hier eingefügt -->
+            <div class="flex justify-between items-center mb-4">
+                <h1 class="text-3xl font-bold text-gray-800">Ihr persönlicher Schließplan</h1>
+                <div class="flex gap-3">
+                    <button id="export-html-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center transition-colors">
+                        <i class="fas fa-file-code mr-2"></i> Als HTML exportieren
+                    </button>
+                    <button id="back-to-questions-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg flex items-center"><i class="fas fa-pencil-alt mr-2"></i> Konfiguration bearbeiten</button>
+                </div>
+            </div>
+            <div id="color-legend" class="flex justify-end items-center gap-4 mb-4 text-sm">
+                <span class="font-semibold">Legende:</span>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 bg-white border"></div><span>Mechanisch</span></div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4" style="background-color: #e0f2fe;"></div><span>Elektronisch</span></div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse schliessplan-table">
+                    <thead>
+                        <tr>
+                            <th colspan="8" class="schliessplan-header-main">Schließzylinder</th>
+                            <td class="border-none bg-gray-100"></td>
+                            <th id="schluessel-header-main" colspan="2" class="schliessplan-header-main">Schlüsselmatrix</th>
+                        </tr>
+                        <tr>
+                            <th class="schliessplan-header-sub">POS</th>
+                            <th class="schliessplan-header-sub">Türbezeichnung</th>
+                            <th class="schliessplan-header-sub">Zylindertyp</th>
+                            <th class="schliessplan-header-sub">System</th>
+                            <th class="schliessplan-header-sub" id="tech-header">Technologie</th>
+                            <th class="schliessplan-header-sub">Maße A/I</th>
+                            <th class="schliessplan-header-sub">Anzahl</th>
+                            <th class="schliessplan-header-sub">Funktionen</th>
+                            <td class="border-none bg-gray-100"></td>
+                            <td class="p-0" id="dynamic-header-cell">
+                                <div class="flex h-full" id="schluessel-header-dynamic"></div>
+                            </td>
+                            <td class="schliessplan-header-vertical">Schlüsselgruppen</td>
+                        </tr>
+                    </thead>
+                    <tbody id="schliessplan-body"></tbody>
+                </table>
+            </div>
+            <div class="mt-4 flex gap-3">
+                <button id="add-row-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg flex items-center">
+                    <i class="fas fa-plus mr-2"></i> Zeile hinzufügen
+                </button>
+                <button id="add-key-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg flex items-center">
+                    <i class="fas fa-key mr-2"></i> Schlüsselgruppe hinzufügen
+                </button>
+            </div>
+        </div>
+
+        <!-- Function Modal -->
+        <div id="function-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl mx-4 p-8 md:p-10 max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 id="modal-title" class="text-2xl font-bold text-gray-800">Funktionen für Tür: <span id="modal-tuer-name"></span></h3>
+                    <button id="modal-cancel-btn" class="text-gray-400 hover:text-gray-600 text-2xl">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div id="features-container" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6"></div>
+                <div class="flex gap-3">
+                    <button id="modal-cancel-btn-bottom" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-6 rounded-xl transition-colors">
+                        Abbrechen
+                    </button>
+                    <button id="modal-save-btn" class="flex-1 bg-[#1a3d5c] hover:bg-[#143149] text-white font-semibold py-3 px-6 rounded-xl transition-colors">
+                        Speichern
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Customer Form Modal -->
+        <div id="customer-form-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-8 md:p-10">
+                <h3 class="text-2xl font-bold text-gray-800 mb-6">Ihre Kontaktdaten</h3>
+                <p class="text-gray-600 mb-6">Geben Sie Ihre Daten ein, um den Schließplan zu speichern:</p>
+                <form id="customer-form" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Vorname *</label>
+                        <input type="text" id="customer-vorname" class="input-cell w-full" placeholder="Max" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Nachname *</label>
+                        <input type="text" id="customer-nachname" class="input-cell w-full" placeholder="Mustermann" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">E-Mail *</label>
+                        <input type="email" id="customer-email" class="input-cell w-full" placeholder="max@example.com" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Telefon (optional)</label>
+                        <input type="tel" id="customer-telefon" class="input-cell w-full" placeholder="0123456789">
+                    </div>
+                </form>
+                
+                <div class="mt-6 flex justify-end gap-4">
+                    <button type="button" onclick="skipCustomerForm()" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">
+                        Überspringen
+                    </button>
+                    <button type="submit" form="customer-form" id="save-plan-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg flex items-center">
+                        <i class="fas fa-save mr-2"></i>Schließplan speichern
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
