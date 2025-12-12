@@ -2859,10 +2859,15 @@ async function handleRegister(event) {
         }
         
         // 1. Registrierung mit Supabase Auth (Passwort wird automatisch gehashed!)
+        // Bestimme Redirect-URL für E-Mail-Bestätigung
+        const currentUrl = window.location.origin + window.location.pathname;
+        const confirmUrl = currentUrl.replace('index.html', 'confirm-email.html');
+        
         const { data: authData, error: authError } = await supabaseClient.auth.signUp({
             email: email,
             password: password,
             options: {
+                emailRedirectTo: confirmUrl,
                 data: {
                     vorname: vorname,
                     nachname: nachname,

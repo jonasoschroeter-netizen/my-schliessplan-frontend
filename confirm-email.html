@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-Mail bestätigen - Schließplan Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .success-icon {
+            width: 80px;
+            height: 80px;
+            background: #10b981;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 24px;
+            animation: scaleIn 0.5s ease-out;
+        }
+        @keyframes scaleIn {
+            from { transform: scale(0); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        .error-icon {
+            width: 80px;
+            height: 80px;
+            background: #ef4444;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 24px;
+        }
+        .spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 24px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="loading-state">
+            <div class="spinner"></div>
+            <h1 class="text-2xl font-bold text-center text-gray-800 mb-4">E-Mail wird bestätigt...</h1>
+            <p class="text-gray-600 text-center">Bitte warten Sie einen Moment.</p>
+        </div>
+
+        <div id="success-state" class="hidden">
+            <div class="success-icon">
+                <i class="fas fa-check text-white text-3xl"></i>
+            </div>
+            <h1 class="text-2xl font-bold text-center text-gray-800 mb-4">E-Mail erfolgreich bestätigt!</h1>
+            <p class="text-gray-600 text-center mb-6">
+                Ihre E-Mail-Adresse wurde erfolgreich bestätigt. Sie können sich jetzt anmelden.
+            </p>
+            <div class="text-center">
+                <a href="index.html" class="inline-block bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors">
+                    Zur Anmeldung
+                </a>
+            </div>
+        </div>
+
+        <div id="error-state" class="hidden">
+            <div class="error-icon">
+                <i class="fas fa-times text-white text-3xl"></i>
+            </div>
+            <h1 class="text-2xl font-bold text-center text-gray-800 mb-4">Bestätigung fehlgeschlagen</h1>
+            <p id="error-message" class="text-gray-600 text-center mb-6">
+                Es ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut.
+            </p>
+            <div class="text-center">
+                <a href="index.html" class="inline-block bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors">
+                    Zur Startseite
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Supabase Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script>
+        // Supabase Credentials
+        const SUPABASE_URL = 'https://gffecqdaybyhhdfkkyqi.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmZmVjcWRheWJ5aGhkZmtreXFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDY5NDYsImV4cCI6MjA3NzA4Mjk0Nn0.7iZ5UY2mSepEAhtPKlQ71JdIzmsLGzgU3RvmEJxzln4';
+        
+        // Initialisiere Supabase Client
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Funktion zum Speichern der E-Mail-Bestätigung
+        async function saveEmailConfirmation(userId) {
+            try {
+                // Aktualisiere den Kunden-Eintrag mit Bestätigungsinformationen
+                const { data, error } = await supabaseClient.rpc('confirm_email_verification', {
+                    p_user_id: userId
+                });
+
+                if (error) {
+                    console.error('Fehler beim Speichern der Bestätigung:', error);
+                    // Wir werfen den Fehler nicht, da die Bestätigung trotzdem erfolgreich war
+                } else {
+                    console.log('✅ E-Mail-Bestätigung erfolgreich dokumentiert:', data);
+                }
+            } catch (err) {
+                console.error('Fehler beim Speichern der Bestätigung:', err);
+                // Wir werfen den Fehler nicht, da die Bestätigung trotzdem erfolgreich war
+            }
+        }
+
+        // Hauptfunktion: E-Mail-Bestätigung verarbeiten
+        async function handleEmailConfirmation() {
+            const loadingState = document.getElementById('loading-state');
+            const successState = document.getElementById('success-state');
+            const errorState = document.getElementById('error-state');
+            const errorMessage = document.getElementById('error-message');
+
+            try {
+                // Supabase verarbeitet die Bestätigung automatisch über URL-Hash oder Query-Parameter
+                // Prüfe verschiedene Token-Formate
+                const urlParams = new URLSearchParams(window.location.search);
+                const hashParams = new URLSearchParams(window.location.hash.substring(1));
+                
+                const token = urlParams.get('token') || hashParams.get('token');
+                const type = urlParams.get('type') || hashParams.get('type') || 'email';
+                const tokenHash = urlParams.get('token_hash') || hashParams.get('token_hash');
+                const accessToken = urlParams.get('access_token') || hashParams.get('access_token');
+                const refreshToken = urlParams.get('refresh_token') || hashParams.get('refresh_token');
+
+                console.log('URL-Parameter:', { token, tokenHash, accessToken, type });
+
+                // Methode 1: Wenn access_token vorhanden ist, setze Session direkt
+                if (accessToken && refreshToken) {
+                    console.log('Verwende access_token für Bestätigung...');
+                    const { data: sessionData, error: sessionError } = await supabaseClient.auth.setSession({
+                        access_token: accessToken,
+                        refresh_token: refreshToken
+                    });
+
+                    if (sessionError) {
+                        throw sessionError;
+                    }
+
+                    if (sessionData.user) {
+                        console.log('✅ E-Mail erfolgreich bestätigt für Benutzer:', sessionData.user.id);
+                        
+                        // Speichere Bestätigung in Datenbank
+                        await saveEmailConfirmation(sessionData.user.id);
+
+                        // Zeige Erfolgsmeldung
+                        loadingState.classList.add('hidden');
+                        successState.classList.remove('hidden');
+                        return;
+                    }
+                }
+
+                // Methode 2: Verwende verifyOtp mit token_hash oder token
+                if (tokenHash || token) {
+                    console.log('Verwende verifyOtp für Bestätigung...');
+                    const { data, error } = await supabaseClient.auth.verifyOtp({
+                        token_hash: tokenHash || token,
+                        type: type
+                    });
+
+                    if (error) {
+                        throw error;
+                    }
+
+                    if (data.user) {
+                        console.log('✅ E-Mail erfolgreich bestätigt für Benutzer:', data.user.id);
+                        
+                        // Speichere Bestätigung in Datenbank
+                        await saveEmailConfirmation(data.user.id);
+
+                        // Zeige Erfolgsmeldung
+                        loadingState.classList.add('hidden');
+                        successState.classList.remove('hidden');
+                        return;
+                    }
+                }
+
+                // Wenn keine Token gefunden wurden
+                throw new Error('Kein Bestätigungstoken in der URL gefunden. Bitte verwenden Sie den Link aus der E-Mail.');
+
+            } catch (error) {
+                console.error('Fehler bei E-Mail-Bestätigung:', error);
+                
+                // Zeige Fehlermeldung
+                loadingState.classList.add('hidden');
+                errorState.classList.remove('hidden');
+                
+                // Setze spezifische Fehlermeldung
+                let message = 'Es ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut.';
+                if (error.message) {
+                    if (error.message.includes('expired') || error.message.includes('expired')) {
+                        message = 'Der Bestätigungslink ist abgelaufen. Bitte registrieren Sie sich erneut.';
+                    } else if (error.message.includes('already confirmed') || error.message.includes('already verified')) {
+                        message = 'Diese E-Mail wurde bereits bestätigt. Sie können sich jetzt anmelden.';
+                    } else if (error.message.includes('invalid') || error.message.includes('Invalid')) {
+                        message = 'Der Bestätigungslink ist ungültig. Bitte verwenden Sie den Link aus der E-Mail.';
+                    } else {
+                        message = error.message;
+                    }
+                }
+                errorMessage.textContent = message;
+            }
+        }
+
+        // Starte Bestätigung wenn Seite geladen ist
+        document.addEventListener('DOMContentLoaded', handleEmailConfirmation);
+    </script>
+</body>
+</html>
+
