@@ -561,6 +561,29 @@
             </div>
         </div>
     </div>
+
+    <!-- Erfolgs-Overlay mit coolen Effekt -->
+    <div id="success-overlay" class="fixed inset-0 bg-black bg-opacity-80 z-[100] flex items-center justify-center hidden">
+        <div class="text-center">
+            <!-- Confetti Animation -->
+            <div id="confetti-container" class="absolute inset-0 pointer-events-none"></div>
+            
+            <!-- Success Icon mit Animation -->
+            <div class="success-icon-large mb-8">
+                <div class="checkmark-circle">
+                    <svg class="checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
+                        <circle class="checkmark-circle-bg" cx="26" cy="26" r="25" fill="none"/>
+                        <path class="checkmark-check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
+                    </svg>
+                </div>
+            </div>
+            
+            <!-- Success Text -->
+            <h2 class="text-5xl font-bold text-white mb-4 success-text">Erfolgreich gespeichert!</h2>
+            <p class="text-xl text-gray-200 success-subtext">Ihr Schließplan wurde in Ihr Profil gespeichert.</p>
+        </div>
+    </div>
+
     <script src="script.js"></script>
 </body>
 </html>
