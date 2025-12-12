@@ -1933,7 +1933,7 @@ function selectCylinderSystem(systemId) {
 
 // --- SCHLIESSPLAN LOGIK ---
 
-function showSchliessplan() {
+async function showSchliessplan() {
     const tuerenFrage = questionsData.find(q => q.key === 'tueren');
     let alleTuerOptionen = tuerenFrage ? tuerenFrage.options.map(o => o.text) : [];
     allDoorOptionsForPlan = [...new Set([...(userAnswers['tueren'] || []), ...alleTuerOptionen])];
@@ -1941,6 +1941,43 @@ function showSchliessplan() {
     elements.questionnaireContainer.classList.add('hidden');
     elements.schliessplanContainer.classList.remove('hidden');
     renderPlan();
+    
+    // Prüfe ob Benutzer eingeloggt ist und zeige/verstecke Anmelde-Option
+    await checkAndShowLoginOption();
+}
+
+// Prüfe Auth-Status und zeige Anmelde-Option wenn nicht eingeloggt
+async function checkAndShowLoginOption() {
+    try {
+        const supabaseClient = await ensureSupabaseReady();
+        if (supabaseClient) {
+            const { data: { user }, error } = await supabaseClient.auth.getUser();
+            
+            const loginOptionContainer = document.getElementById('login-option-container');
+            if (loginOptionContainer) {
+                if (error || !user) {
+                    // Nicht eingeloggt → Zeige Anmelde-Option
+                    loginOptionContainer.classList.remove('hidden');
+                } else {
+                    // Eingeloggt → Verstecke Anmelde-Option
+                    loginOptionContainer.classList.add('hidden');
+                }
+            }
+        } else {
+            // Supabase nicht verfügbar → Zeige Anmelde-Option
+            const loginOptionContainer = document.getElementById('login-option-container');
+            if (loginOptionContainer) {
+                loginOptionContainer.classList.remove('hidden');
+            }
+        }
+    } catch (error) {
+        console.warn('⚠️ Fehler beim Prüfen des Auth-Status für Login-Option:', error);
+        // Bei Fehler → Zeige Anmelde-Option
+        const loginOptionContainer = document.getElementById('login-option-container');
+        if (loginOptionContainer) {
+            loginOptionContainer.classList.remove('hidden');
+        }
+    }
 }
 
 function generateInitialPlanData() {
@@ -3187,6 +3224,27 @@ if (customerForm) {
         e.preventDefault();
         await savePlanToCRM();
     });
+}
+
+// Prüfe Auth-Status wenn Customer Form Modal geöffnet wird
+function checkAuthOnCustomerFormOpen() {
+    const customerFormModal = document.getElementById('customer-form-modal');
+    if (customerFormModal) {
+        // Prüfe ob Modal sichtbar ist
+        const observer = new MutationObserver(() => {
+            if (!customerFormModal.classList.contains('hidden')) {
+                checkAndShowLoginOption();
+            }
+        });
+        observer.observe(customerFormModal, { attributes: true, attributeFilter: ['class'] });
+    }
+}
+
+// Initialisiere Observer beim Laden
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', checkAuthOnCustomerFormOpen);
+} else {
+    checkAuthOnCustomerFormOpen();
 }
 
 // HTML-Export Button Event Listener

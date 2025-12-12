@@ -257,6 +257,26 @@
             <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-8 md:p-10">
                 <h3 class="text-2xl font-bold text-gray-800 mb-6">Ihre Kontaktdaten</h3>
                 <p class="text-gray-600 mb-6">Geben Sie Ihre Daten ein, um den Schließplan zu speichern:</p>
+                
+                <!-- Anmelde-Option für nicht angemeldete Benutzer -->
+                <div id="login-option-container" class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg hidden">
+                    <p class="text-sm text-gray-700 mb-3">
+                        <i class="fas fa-info-circle text-blue-600 mr-2"></i>
+                        Sie sind nicht angemeldet. Melden Sie sich an, um Ihre Schließpläne zu verwalten.
+                    </p>
+                    <div class="flex gap-2">
+                        <a href="/login" class="flex-1 bg-[#1a3d5c] hover:bg-[#143149] text-white font-semibold py-2 px-4 rounded-lg text-center transition-colors">
+                            <i class="fas fa-sign-in-alt mr-2"></i>Anmelden
+                        </a>
+                        <a href="/register" class="flex-1 bg-white hover:bg-gray-50 text-[#1a3d5c] font-semibold py-2 px-4 rounded-lg text-center border-2 border-[#1a3d5c] transition-colors">
+                            <i class="fas fa-user-plus mr-2"></i>Registrieren
+                        </a>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-blue-200">
+                        <p class="text-xs text-gray-600 text-center">Oder speichern Sie als Gast (ohne Konto)</p>
+                    </div>
+                </div>
+                
                 <form id="customer-form" class="space-y-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Vorname *</label>
