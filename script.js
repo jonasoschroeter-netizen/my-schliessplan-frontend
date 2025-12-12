@@ -1949,6 +1949,39 @@ async function showSchliessplan() {
     await checkAndShowSaveButton();
 }
 
+// Prüfe Auth-Status und zeige Speichern-Button wenn eingeloggt
+async function checkAndShowSaveButton() {
+    try {
+        const supabaseClient = await ensureSupabaseReady();
+        if (supabaseClient) {
+            const { data: { user }, error } = await supabaseClient.auth.getUser();
+            
+            const saveButtonContainer = document.getElementById('save-to-profile-container');
+            if (saveButtonContainer) {
+                if (!error && user) {
+                    // Eingeloggt → Zeige Speichern-Button
+                    saveButtonContainer.classList.remove('hidden');
+                } else {
+                    // Nicht eingeloggt → Verstecke Speichern-Button
+                    saveButtonContainer.classList.add('hidden');
+                }
+            }
+        } else {
+            // Supabase nicht verfügbar → Verstecke Button
+            const saveButtonContainer = document.getElementById('save-to-profile-container');
+            if (saveButtonContainer) {
+                saveButtonContainer.classList.add('hidden');
+            }
+        }
+    } catch (error) {
+        console.warn('⚠️ Fehler beim Prüfen des Auth-Status für Save-Button:', error);
+        const saveButtonContainer = document.getElementById('save-to-profile-container');
+        if (saveButtonContainer) {
+            saveButtonContainer.classList.add('hidden');
+        }
+    }
+}
+
 // Prüfe Auth-Status und zeige Anmelde-Option wenn nicht eingeloggt
 async function checkAndShowLoginOption() {
     try {
@@ -3388,12 +3421,23 @@ document.addEventListener('DOMContentLoaded', () => {
     if (exportHtmlBtn) {
         exportHtmlBtn.addEventListener('click', exportSchliessplanToHTML);
     }
+    
+    // Save to Profile Button Event Listener
+    const saveToProfileBtn = document.getElementById('save-to-profile-btn');
+    if (saveToProfileBtn) {
+        saveToProfileBtn.addEventListener('click', savePlanToProfile);
+    }
 });
 
 // Auch nach DOM-Load registrieren, falls DOM bereits geladen ist
 const exportHtmlBtn = document.getElementById('export-html-btn');
 if (exportHtmlBtn) {
     exportHtmlBtn.addEventListener('click', exportSchliessplanToHTML);
+}
+
+const saveToProfileBtn = document.getElementById('save-to-profile-btn');
+if (saveToProfileBtn) {
+    saveToProfileBtn.addEventListener('click', savePlanToProfile);
 }
 
 // --- DEBUG SYSTEM ---
