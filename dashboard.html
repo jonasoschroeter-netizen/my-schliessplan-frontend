@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Schließplan Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <!-- Supabase Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script>
+        // Supabase Credentials
+        const SUPABASE_URL = 'https://gffecqdaybyhhdfkkyqi.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmZmVjcWRheWJ5aGhkZmtreXFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDY5NDYsImV4cCI6MjA3NzA4Mjk0Nn0.7iZ5UY2mSepEAhtPKlQ71JdIzmsLGzgU3RvmEJxzln4';
+        
+        // Initialisiere Supabase Client
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    </script>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4 bg-gray-50">
+    <div class="w-full max-w-4xl mx-auto bg-white rounded-2xl shadow-xl p-6 md:p-10">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-8">
+            <div class="flex items-center space-x-4">
+                <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiBmaWxsPSIjN0NBQ0YwIi8+Cjx0ZXh0IHg9IjE2IiB5PSIyMCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0IiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+TDwvdGV4dD4KPC9zdmc+" alt="Logo" class="h-8 w-auto">
+                <h1 class="text-2xl font-bold text-gray-800">Dashboard</h1>
+            </div>
+            
+            <!-- User Menu -->
+            <div id="user-menu-container" class="relative">
+                <button id="user-menu-btn" class="flex items-center justify-center w-10 h-10 rounded-full bg-gray-200 hover:bg-gray-300 transition-colors cursor-pointer">
+                    <i class="fas fa-user text-gray-600 text-lg"></i>
+                </button>
+                
+                <!-- Dropdown Menu -->
+                <div id="user-menu-dropdown" class="hidden absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                    <div class="p-4 border-b border-gray-200">
+                        <p class="text-sm font-semibold text-gray-800" id="user-menu-name">Benutzer</p>
+                        <p class="text-xs text-gray-500 mt-1" id="user-menu-email">email@example.com</p>
+                    </div>
+                    <div class="py-2">
+                        <button id="user-profile-btn" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
+                            <i class="fas fa-user-circle mr-2"></i>
+                            Profil anzeigen
+                        </button>
+                        <button id="user-logout-btn" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors">
+                            <i class="fas fa-sign-out-alt mr-2"></i>
+                            Abmelden
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Willkommensnachricht -->
+        <div class="mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-2">Willkommen zurück!</h2>
+            <p class="text-gray-600">Was möchten Sie tun?</p>
+        </div>
+
+        <!-- Optionen -->
+        <div class="grid md:grid-cols-2 gap-6 mb-8">
+            <!-- Neuer Konfigurator -->
+            <div class="border-2 border-gray-200 rounded-xl p-6 hover:border-[#1a3d5c] transition-colors cursor-pointer" id="new-config-btn">
+                <div class="flex items-center justify-center w-16 h-16 bg-[#1a3d5c] rounded-full mb-4 mx-auto">
+                    <i class="fas fa-plus text-white text-2xl"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 text-center mb-2">Neuer Konfigurator</h3>
+                <p class="text-gray-600 text-center text-sm">Starten Sie einen neuen Schließplan-Konfigurator</p>
+            </div>
+
+            <!-- Session fortsetzen -->
+            <div class="border-2 border-gray-200 rounded-xl p-6 hover:border-[#1a3d5c] transition-colors cursor-pointer" id="continue-session-btn">
+                <div class="flex items-center justify-center w-16 h-16 bg-green-600 rounded-full mb-4 mx-auto">
+                    <i class="fas fa-play text-white text-2xl"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 text-center mb-2">Session fortsetzen</h3>
+                <p class="text-gray-600 text-center text-sm">Setzen Sie Ihre letzte Session fort</p>
+            </div>
+        </div>
+
+        <!-- Gespeicherte Schließpläne -->
+        <div class="mt-8">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Meine Schließpläne</h3>
+            <div id="saved-plans-container" class="space-y-3">
+                <div class="text-center text-gray-500 py-8">
+                    <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                    <p>Lade Schließpläne...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="dashboard.js"></script>
+</body>
+</html>
+

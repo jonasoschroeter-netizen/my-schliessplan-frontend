@@ -1658,6 +1658,8 @@ function handleNext() {
     if (currentQuestionIndex < questionsData.length - 1) {
         currentQuestionIndex++;
         renderCurrentQuestion();
+        // Speichere Session
+        saveSessionToStorage();
     } else {
         // Prüfe ob alle notwendigen Fragen beantwortet wurden
         if (!userAnswers['tueren'] || userAnswers['tueren'].length === 0) {
@@ -1666,6 +1668,8 @@ function handleNext() {
         }
         // Nach Frage 6 direkt zum Zylinder-Finder
         renderCylinderFinder();
+        // Speichere Session
+        saveSessionToStorage();
     }
 }
 
@@ -1674,6 +1678,8 @@ function handlePrev() {
         currentQuestionIndex--;
         elements.navigationButtons.style.display = 'flex';
         renderCurrentQuestion();
+        // Speichere Session
+        saveSessionToStorage();
     }
 }
 
@@ -2968,15 +2974,8 @@ async function handleRegister(event) {
         // 3. Erfolgsmeldung
         showRegisterStatus('success', 'Registrierung erfolgreich! Sie werden jetzt eingeloggt...');
         
-        // User-Menü anzeigen
-        showUserMenu(authData.user);
-        
-        // 4. Modal schließen und Auth Screen ausblenden
-        setTimeout(() => {
-            hideRegisterModal();
-            hideAuthScreen();
-            // Fragebogen wird automatisch angezeigt
-        }, 1500);
+        // Weiterleitung zu Dashboard
+        window.location.href = '/dashboard';
         
     } catch (error) {
         console.error('❌ Fehler bei der Registrierung:', error);
@@ -3136,15 +3135,8 @@ async function handleLogin(event) {
         // Erfolgsmeldung
         showLoginStatus('success', 'Erfolgreich eingeloggt!');
         
-        // User-Menü anzeigen
-        showUserMenu(authData.user);
-        
-        // Modal schließen und Auth Screen ausblenden
-        setTimeout(() => {
-            hideLoginModal();
-            hideAuthScreen();
-            initializeQuestionnaire(); // Fragebogen starten
-        }, 1000);
+        // Weiterleitung zu Dashboard
+        window.location.href = '/dashboard';
         
     } catch (error) {
         console.error('❌ Fehler beim Login:', error);
