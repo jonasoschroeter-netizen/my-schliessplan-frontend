@@ -2968,6 +2968,9 @@ async function handleRegister(event) {
         // 3. Erfolgsmeldung
         showRegisterStatus('success', 'Registrierung erfolgreich! Sie werden jetzt eingeloggt...');
         
+        // User-Menü anzeigen
+        showUserMenu(authData.user);
+        
         // 4. Modal schließen und Auth Screen ausblenden
         setTimeout(() => {
             hideRegisterModal();
@@ -3132,6 +3135,9 @@ async function handleLogin(event) {
         
         // Erfolgsmeldung
         showLoginStatus('success', 'Erfolgreich eingeloggt!');
+        
+        // User-Menü anzeigen
+        showUserMenu(authData.user);
         
         // Modal schließen und Auth Screen ausblenden
         setTimeout(() => {
@@ -3548,10 +3554,223 @@ async function startApplication() {
     }
 }
 
+// ============================================
+// USER MENU FUNKTIONEN
+// ============================================
+
+// Zeige User-Menü wenn eingeloggt
+async function showUserMenu(user) {
+    const userMenuContainer = document.getElementById('user-menu-container');
+    if (!userMenuContainer) return;
+    
+    userMenuContainer.classList.remove('hidden');
+    
+    // Lade Benutzerdaten
+    try {
+        const supabaseClient = await ensureSupabaseReady();
+        if (supabaseClient && user) {
+            // Hole Kunden-Daten
+            const { data: kundeData, error: kundeError } = await supabaseClient
+                .from('kunden')
+                .select('vorname, nachname, email')
+                .eq('user_id', user.id)
+                .single();
+            
+            if (!kundeError && kundeData) {
+                const nameElement = document.getElementById('user-menu-name');
+                const emailElement = document.getElementById('user-menu-email');
+                
+                if (nameElement) {
+                    nameElement.textContent = `${kundeData.vorname || ''} ${kundeData.nachname || ''}`.trim() || 'Benutzer';
+                }
+                if (emailElement) {
+                    emailElement.textContent = kundeData.email || user.email || '';
+                }
+            } else {
+                // Fallback auf Auth-Daten
+                const nameElement = document.getElementById('user-menu-name');
+                const emailElement = document.getElementById('user-menu-email');
+                
+                if (nameElement) {
+                    const vorname = user.user_metadata?.vorname || '';
+                    const nachname = user.user_metadata?.nachname || '';
+                    nameElement.textContent = `${vorname} ${nachname}`.trim() || 'Benutzer';
+                }
+                if (emailElement) {
+                    emailElement.textContent = user.email || '';
+                }
+            }
+        }
+    } catch (error) {
+        console.warn('⚠️ Fehler beim Laden der Benutzerdaten:', error);
+    }
+}
+
+// Verstecke User-Menü
+function hideUserMenu() {
+    const userMenuContainer = document.getElementById('user-menu-container');
+    if (userMenuContainer) {
+        userMenuContainer.classList.add('hidden');
+    }
+}
+
+// Zeige Profil-Modal
+async function showProfileModal() {
+    const profileModal = document.getElementById('profile-modal');
+    if (!profileModal) return;
+    
+    try {
+        const supabaseClient = await ensureSupabaseReady();
+        if (!supabaseClient) {
+            console.error('Supabase Client nicht verfügbar');
+            return;
+        }
+        
+        // Hole aktuelle Session
+        const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+        
+        if (userError || !user) {
+            console.error('Fehler beim Laden des Benutzers:', userError);
+            return;
+        }
+        
+        // Hole Kunden-Daten
+        const { data: kundeData, error: kundeError } = await supabaseClient
+            .from('kunden')
+            .select('vorname, nachname, email, email_bestaetigt, email_bestaetigt_am')
+            .eq('user_id', user.id)
+            .single();
+        
+        // Fülle Profil-Daten
+        const vorname = kundeData?.vorname || user.user_metadata?.vorname || '-';
+        const nachname = kundeData?.nachname || user.user_metadata?.nachname || '-';
+        const email = kundeData?.email || user.email || '-';
+        const emailBestaetigt = kundeData?.email_bestaetigt || user.email_confirmed_at !== null;
+        
+        document.getElementById('profile-vorname').textContent = vorname;
+        document.getElementById('profile-nachname').textContent = nachname;
+        document.getElementById('profile-email').textContent = email;
+        
+        const emailStatusElement = document.getElementById('profile-email-status');
+        if (emailStatusElement) {
+            if (emailBestaetigt) {
+                emailStatusElement.innerHTML = '<i class="fas fa-check-circle text-green-500 mr-2"></i>Bestätigt';
+            } else {
+                emailStatusElement.innerHTML = '<i class="fas fa-times-circle text-red-500 mr-2"></i>Nicht bestätigt';
+            }
+        }
+        
+        profileModal.classList.remove('hidden');
+    } catch (error) {
+        console.error('Fehler beim Öffnen des Profils:', error);
+    }
+}
+
+// Verstecke Profil-Modal
+function hideProfileModal() {
+    const profileModal = document.getElementById('profile-modal');
+    if (profileModal) {
+        profileModal.classList.add('hidden');
+    }
+}
+
+// Logout-Funktion
+async function handleLogout() {
+    try {
+        const supabaseClient = await ensureSupabaseReady();
+        if (supabaseClient) {
+            const { error } = await supabaseClient.auth.signOut();
+            if (error) {
+                console.error('Fehler beim Abmelden:', error);
+                alert('Fehler beim Abmelden. Bitte versuchen Sie es erneut.');
+            } else {
+                console.log('✅ Erfolgreich abgemeldet');
+                hideUserMenu();
+                hideProfileModal();
+                showAuthScreen();
+            }
+        }
+    } catch (error) {
+        console.error('Fehler beim Abmelden:', error);
+    }
+}
+
+// Initialisiere User-Menü Event Listeners
+function initializeUserMenu() {
+    const userMenuBtn = document.getElementById('user-menu-btn');
+    const userMenuDropdown = document.getElementById('user-menu-dropdown');
+    const userProfileBtn = document.getElementById('user-profile-btn');
+    const userLogoutBtn = document.getElementById('user-logout-btn');
+    const profileCloseBtn = document.getElementById('profile-close-btn');
+    const profileCloseBtnBottom = document.getElementById('profile-close-btn-bottom');
+    
+    // Toggle Dropdown
+    if (userMenuBtn && userMenuDropdown) {
+        userMenuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            userMenuDropdown.classList.toggle('hidden');
+        });
+        
+        // Schließe Dropdown wenn außerhalb geklickt wird
+        document.addEventListener('click', (e) => {
+            if (!userMenuBtn.contains(e.target) && !userMenuDropdown.contains(e.target)) {
+                userMenuDropdown.classList.add('hidden');
+            }
+        });
+    }
+    
+    // Profil öffnen
+    if (userProfileBtn) {
+        userProfileBtn.addEventListener('click', () => {
+            userMenuDropdown.classList.add('hidden');
+            showProfileModal();
+        });
+    }
+    
+    // Logout
+    if (userLogoutBtn) {
+        userLogoutBtn.addEventListener('click', () => {
+            userMenuDropdown.classList.add('hidden');
+            handleLogout();
+        });
+    }
+    
+    // Profil schließen
+    if (profileCloseBtn) {
+        profileCloseBtn.addEventListener('click', hideProfileModal);
+    }
+    if (profileCloseBtnBottom) {
+        profileCloseBtnBottom.addEventListener('click', hideProfileModal);
+    }
+}
+
+// Prüfe ob Benutzer bereits eingeloggt ist beim Laden
+async function checkAuthState() {
+    try {
+        const supabaseClient = await ensureSupabaseReady();
+        if (supabaseClient) {
+            const { data: { user }, error } = await supabaseClient.auth.getUser();
+            if (!error && user) {
+                console.log('✅ Benutzer bereits eingeloggt:', user.id);
+                showUserMenu(user);
+            } else {
+                hideUserMenu();
+            }
+        }
+    } catch (error) {
+        console.warn('⚠️ Fehler beim Prüfen des Auth-Status:', error);
+        hideUserMenu();
+    }
+}
+
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         startApplication();
+        initializeUserMenu();
+        checkAuthState();
     });
 } else {
     startApplication();
+    initializeUserMenu();
+    checkAuthState();
 }

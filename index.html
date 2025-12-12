@@ -342,11 +342,36 @@
     </div>
     
     <!-- Main Content -->
-    <div class="w-full max-w-7xl mx-auto bg-white rounded-2xl shadow-xl p-6 md:p-10">
+    <div class="w-full max-w-7xl mx-auto bg-white rounded-2xl shadow-xl p-6 md:p-10 relative">
 
-        <div class="flex items-center space-x-4">
+        <div class="flex items-center justify-between mb-4">
             <div id="logo" class="flex items-center">
                 <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiBmaWxsPSIjN0NBQ0YwIi8+Cjx0ZXh0IHg9IjE2IiB5PSIyMCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0IiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+TDwvdGV4dD4KPC9zdmc+" alt="Firmenlogo" class="h-8 w-auto">
+            </div>
+            
+            <!-- User Icon (nur sichtbar wenn eingeloggt) -->
+            <div id="user-menu-container" class="hidden relative">
+                <button id="user-menu-btn" class="flex items-center justify-center w-10 h-10 rounded-full bg-gray-200 hover:bg-gray-300 transition-colors cursor-pointer">
+                    <i class="fas fa-user text-gray-600 text-lg"></i>
+                </button>
+                
+                <!-- Dropdown Menu -->
+                <div id="user-menu-dropdown" class="hidden absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                    <div class="p-4 border-b border-gray-200">
+                        <p class="text-sm font-semibold text-gray-800" id="user-menu-name">Benutzer</p>
+                        <p class="text-xs text-gray-500 mt-1" id="user-menu-email">email@example.com</p>
+                    </div>
+                    <div class="py-2">
+                        <button id="user-profile-btn" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
+                            <i class="fas fa-user-circle mr-2"></i>
+                            Profil anzeigen
+                        </button>
+                        <button id="user-logout-btn" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors">
+                            <i class="fas fa-sign-out-alt mr-2"></i>
+                            Abmelden
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -461,6 +486,51 @@
                     <button id="modal-cancel-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-6 rounded-lg">Abbrechen</button>
                     <button id="modal-save-btn" class="bg-[#1a3d5c] hover:bg-[#143149] text-white font-bold py-2 px-6 rounded-lg">Speichern</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Profil Modal (später erweiterbar) -->
+    <div id="profile-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-8 md:p-10">
+            <!-- Header -->
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-2xl font-bold text-gray-800">Mein Profil</h3>
+                <button id="profile-close-btn" class="text-gray-400 hover:text-gray-600 text-2xl">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <!-- Profil Info -->
+            <div id="profile-content" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Vorname</label>
+                    <p id="profile-vorname" class="text-gray-800">-</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Nachname</label>
+                    <p id="profile-nachname" class="text-gray-800">-</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">E-Mail</label>
+                    <p id="profile-email" class="text-gray-800">-</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">E-Mail bestätigt</label>
+                    <p id="profile-email-confirmed" class="text-gray-800">
+                        <span id="profile-email-status" class="inline-flex items-center">
+                            <i class="fas fa-circle text-gray-400 mr-2"></i>
+                            Wird geladen...
+                        </span>
+                    </p>
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="flex gap-3 mt-6">
+                <button id="profile-close-btn-bottom" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-6 rounded-xl transition-colors">
+                    Schließen
+                </button>
             </div>
         </div>
     </div>
