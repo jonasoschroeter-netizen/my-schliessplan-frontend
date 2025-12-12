@@ -117,16 +117,29 @@
         // Funktion zum Speichern der E-Mail-Bestätigung
         async function saveEmailConfirmation(userId) {
             try {
-                // Aktualisiere den Kunden-Eintrag mit Bestätigungsinformationen
-                const { data, error } = await supabaseClient.rpc('confirm_email_verification', {
+                console.log('Speichere E-Mail-Bestätigung für User:', userId);
+                
+                // Methode 1: Versuche confirm_email_verification
+                const { data: confirmData, error: confirmError } = await supabaseClient.rpc('confirm_email_verification', {
                     p_user_id: userId
                 });
 
-                if (error) {
-                    console.error('Fehler beim Speichern der Bestätigung:', error);
-                    // Wir werfen den Fehler nicht, da die Bestätigung trotzdem erfolgreich war
+                if (confirmError) {
+                    console.warn('confirm_email_verification fehlgeschlagen, versuche sync:', confirmError);
+                    
+                    // Methode 2: Versuche check_and_sync_email_confirmation als Fallback
+                    const { data: syncData, error: syncError } = await supabaseClient.rpc('check_and_sync_email_confirmation', {
+                        p_user_id: userId
+                    });
+                    
+                    if (syncError) {
+                        console.error('Auch check_and_sync_email_confirmation fehlgeschlagen:', syncError);
+                        // Wir werfen den Fehler nicht, da die Bestätigung trotzdem erfolgreich war
+                    } else {
+                        console.log('✅ E-Mail-Bestätigung über Sync-Funktion dokumentiert:', syncData);
+                    }
                 } else {
-                    console.log('✅ E-Mail-Bestätigung erfolgreich dokumentiert:', data);
+                    console.log('✅ E-Mail-Bestätigung erfolgreich dokumentiert:', confirmData);
                 }
             } catch (err) {
                 console.error('Fehler beim Speichern der Bestätigung:', err);

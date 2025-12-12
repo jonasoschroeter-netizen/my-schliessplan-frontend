@@ -3111,6 +3111,18 @@ async function handleLogin(event) {
         
         console.log('✅ Benutzer erfolgreich eingeloggt:', authData.user.id);
         
+        // Synchronisiere E-Mail-Bestätigung (falls bereits bestätigt)
+        try {
+            const { data: syncData, error: syncError } = await supabaseClient.rpc('check_and_sync_email_confirmation', {
+                p_user_id: authData.user.id
+            });
+            if (!syncError && syncData?.synced) {
+                console.log('✅ E-Mail-Bestätigung synchronisiert:', syncData);
+            }
+        } catch (syncErr) {
+            console.warn('⚠️ Synchronisation der E-Mail-Bestätigung fehlgeschlagen (nicht kritisch):', syncErr);
+        }
+        
         // Erfolgsmeldung
         showLoginStatus('success', 'Erfolgreich eingeloggt!');
         
