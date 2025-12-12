@@ -3606,6 +3606,43 @@ function hideUserMenu() {
     }
 }
 
+// Stelle Session wieder her
+function restoreSession(sessionData) {
+    if (sessionData.userAnswers) {
+        Object.assign(userAnswers, sessionData.userAnswers);
+    }
+    if (sessionData.planData) {
+        planData = sessionData.planData;
+    }
+    if (sessionData.currentQuestionIndex !== undefined) {
+        currentQuestionIndex = sessionData.currentQuestionIndex;
+    }
+    
+    console.log('✅ Session wiederhergestellt');
+    
+    // Starte Fragebogen mit wiederhergestellter Position
+    if (currentQuestionIndex > 0 && questionsData && questionsData.length > 0) {
+        renderCurrentQuestion();
+    } else {
+        initializeQuestionnaire();
+    }
+}
+
+// Speichere Session in localStorage
+function saveSessionToStorage() {
+    try {
+        const sessionData = {
+            userAnswers: userAnswers,
+            planData: planData,
+            currentQuestionIndex: currentQuestionIndex,
+            timestamp: new Date().toISOString()
+        };
+        localStorage.setItem('lastSchliessplanSession', JSON.stringify(sessionData));
+    } catch (error) {
+        console.warn('⚠️ Fehler beim Speichern der Session:', error);
+    }
+}
+
 // Zeige Profil-Modal
 async function showProfileModal() {
     const profileModal = document.getElementById('profile-modal');
