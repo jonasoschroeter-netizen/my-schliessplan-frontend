@@ -1944,6 +1944,9 @@ async function showSchliessplan() {
     
     // Prüfe ob Benutzer eingeloggt ist und zeige/verstecke Anmelde-Option
     await checkAndShowLoginOption();
+    
+    // Prüfe ob Benutzer eingeloggt ist und zeige Speichern-Button
+    await checkAndShowSaveButton();
 }
 
 // Prüfe Auth-Status und zeige Anmelde-Option wenn nicht eingeloggt
@@ -2415,6 +2418,138 @@ function skipCustomerForm() {
     if (confirm('Möchten Sie wirklich ohne Speichern fortfahren? Der Schließplan geht verloren.')) {
         console.log('Schließplan wurde nicht gespeichert');
         // Optional: Als PDF exportieren oder anderweitig speichern
+    }
+}
+
+// Speichere Schließplan direkt ins Profil (für angemeldete Benutzer)
+async function savePlanToProfile() {
+    const saveBtn = document.getElementById('save-to-profile-btn');
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin text-xl"></i><span class="text-lg">Speichere...</span>';
+    }
+    
+    try {
+        const supabaseClient = await ensureSupabaseReady();
+        if (!supabaseClient) {
+            throw new Error('Supabase Client nicht verfügbar');
+        }
+        
+        // Hole aktuellen Benutzer
+        const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+        if (userError || !user) {
+            throw new Error('Sie müssen angemeldet sein, um zu speichern');
+        }
+        
+        // Hole Kunden-Daten
+        const { data: kundeData, error: kundeError } = await supabaseClient
+            .from('kunden')
+            .select('id, kundenummer')
+            .eq('user_id', user.id)
+            .single();
+        
+        if (kundeError || !kundeData) {
+            throw new Error('Kunden-Daten nicht gefunden. Bitte kontaktieren Sie den Support.');
+        }
+        
+        // Schließplan speichern
+        const selectedSystem = allCylinderSystems.find(s => s.id === userAnswers.cylinderSystemId);
+        
+        const schliessplanData = {
+            kunde_id: kundeData.id,
+            name: `${userAnswers.objekttyp || 'Schließplan'} - ${new Date().toLocaleDateString('de-DE')}`,
+            objekttyp: userAnswers.objekttyp,
+            anlagentyp: userAnswers.anlagentyp,
+            qualitaet: userAnswers.qualitaet,
+            technologie: userAnswers.technologie,
+            zylinder_system_id: userAnswers.cylinderSystemId,
+            zylinder_system_name: selectedSystem?.name,
+            plan_data: planData,
+            user_answers: userAnswers,
+            status: 'erstellt'
+        };
+        
+        const { data: planDataResult, error: planError } = await supabaseClient
+            .from('schliessplaene')
+            .insert([schliessplanData])
+            .select()
+            .single();
+        
+        if (planError) {
+            throw new Error(`Fehler beim Speichern: ${planError.message}`);
+        }
+        
+        console.log('✅ Schließplan gespeichert:', planDataResult);
+        
+        // Automatisch in Mediathek speichern
+        try {
+            await saveToMediathek(supabaseClient, planDataResult.id, kundeData.id, planDataResult);
+            console.log('✅ Schließplan erfolgreich in Mediathek gespeichert');
+        } catch (mediathekError) {
+            console.warn('⚠️ Fehler beim Speichern in Mediathek (Plan ist trotzdem gespeichert):', mediathekError);
+        }
+        
+        // Zeige Erfolgs-Overlay mit coolen Effekt
+        showSuccessOverlay();
+        
+    } catch (error) {
+        console.error('❌ Fehler beim Speichern:', error);
+        alert(`Fehler beim Speichern: ${error.message}`);
+    } finally {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="fas fa-save text-xl"></i><span class="text-lg">Schließplan ins Profil speichern</span>';
+        }
+    }
+}
+
+// Zeige Erfolgs-Overlay mit coolen Effekt
+function showSuccessOverlay() {
+    const overlay = document.getElementById('success-overlay');
+    if (!overlay) return;
+    
+    // Erstelle Confetti
+    createConfetti();
+    
+    // Zeige Overlay
+    overlay.classList.remove('hidden');
+    
+    // Verstecke Overlay nach 3 Sekunden
+    setTimeout(() => {
+        overlay.classList.add('hidden');
+        // Entferne Confetti
+        const confettiContainer = document.getElementById('confetti-container');
+        if (confettiContainer) {
+            confettiContainer.innerHTML = '';
+        }
+    }, 3000);
+}
+
+// Erstelle Confetti-Effekt
+function createConfetti() {
+    const container = document.getElementById('confetti-container');
+    if (!container) return;
+    
+    const colors = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899'];
+    const confettiCount = 50;
+    
+    for (let i = 0; i < confettiCount; i++) {
+        const confetti = document.createElement('div');
+        confetti.className = 'confetti';
+        confetti.style.left = Math.random() * 100 + '%';
+        confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+        confetti.style.animationDelay = Math.random() * 0.5 + 's';
+        confetti.style.animationDuration = (Math.random() * 2 + 2) + 's';
+        confetti.style.width = (Math.random() * 10 + 5) + 'px';
+        confetti.style.height = confetti.style.width;
+        confetti.style.borderRadius = Math.random() > 0.5 ? '50%' : '0';
+        
+        container.appendChild(confetti);
+        
+        // Entferne nach Animation
+        setTimeout(() => {
+            confetti.remove();
+        }, 5000);
     }
 }
 
