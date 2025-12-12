@@ -8,6 +8,9 @@ const ZYLINDER_ARTEN = ["Doppelzylinder", "Halbzylinder", "Knaufzylinder", "Auß
 let ALL_FEATURES = {};
 const STRAPI_BASE_URL = 'https://brave-basketball-98ec57b285.strapiapp.com'; // Strapi Cloud Backend
 
+// Netlify Production URL für E-Mail-Bestätigung
+const NETLIFY_URL = 'https://frontend-schlieplan.netlify.app';
+
 // Cache-Busting Konfiguration
 const CACHE_BUSTING = true; // Aktiviert Cache-Busting für alle API-Aufrufe
 
@@ -2860,8 +2863,12 @@ async function handleRegister(event) {
         
         // 1. Registrierung mit Supabase Auth (Passwort wird automatisch gehashed!)
         // Bestimme Redirect-URL für E-Mail-Bestätigung
-        const currentUrl = window.location.origin + window.location.pathname;
-        const confirmUrl = currentUrl.replace('index.html', 'confirm-email.html');
+        // Verwende Netlify-URL wenn auf Netlify, sonst aktuelle URL (für lokale Entwicklung)
+        const isNetlify = window.location.hostname.includes('netlify.app');
+        const baseUrl = isNetlify ? NETLIFY_URL : (window.location.origin + window.location.pathname);
+        const confirmUrl = baseUrl.replace('index.html', '').replace(/\/$/, '') + '/confirm-email.html';
+        
+        console.log('📧 E-Mail-Bestätigungs-URL:', confirmUrl);
         
         const { data: authData, error: authError } = await supabaseClient.auth.signUp({
             email: email,
