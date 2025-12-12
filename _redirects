@@ -1,8 +1,9 @@
 # Netlify Redirects für Client-Side Routing
-# Alle Routen werden zur index.html weitergeleitet
+# Alle Routen werden zur entsprechenden HTML-Datei weitergeleitet
 
 /login    /login.html    200
 /dashboard    /dashboard.html    200
+/start    /start.html    200
 /register    /index.html    200
 /*    /index.html    200
 

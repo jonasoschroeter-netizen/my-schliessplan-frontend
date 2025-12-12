@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schließplan Konfigurator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <!-- Supabase Client - wird über CDN Script geladen (robuster als ES Module) -->
+    <script>
+        // Supabase Credentials
+        const SUPABASE_URL = 'https://gffecqdaybyhhdfkkyqi.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmZmVjcWRheWJ5aGhkZmtreXFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDY5NDYsImV4cCI6MjA3NzA4Mjk0Nn0.7iZ5UY2mSepEAhtPKlQ71JdIzmsLGzgU3RvmEJxzln4';
+        
+        // Initialisiere Supabase nachdem das Script geladen ist
+        function initializeSupabaseClient(retryCount = 0) {
+            try {
+                // Versuche verschiedene Zugriffswege auf das Supabase-Objekt
+                let supabaseObj = null;
+                
+                // Versuche 1: Über window.supabase (UMD Build macht es global verfügbar)
+                if (typeof window.supabase !== 'undefined' && window.supabase !== null) {
+                    supabaseObj = window.supabase;
+                }
+                // Versuche 2: Direkter Zugriff auf supabase (falls im Scope)
+                else if (typeof supabase !== 'undefined' && supabase !== null) {
+                    supabaseObj = supabase;
+                }
+                // Versuche 3: Über window.Supabase (fallback)
+                else if (typeof window.Supabase !== 'undefined' && window.Supabase !== null) {
+                    supabaseObj = window.Supabase;
+                }
+                
+                // Prüfe ob Objekt verfügbar ist und createClient hat
+                if (!supabaseObj || typeof supabaseObj.createClient !== 'function') {
+                    console.log('⏳ Supabase Library noch nicht geladen, warte...', retryCount);
+                    if (retryCount < 20) {
+                        setTimeout(() => initializeSupabaseClient(retryCount + 1), 100);
+                    } else {
+                        console.error('❌ Supabase Library konnte nicht geladen werden');
+                        window.dispatchEvent(new CustomEvent('supabase-error', { 
+                            detail: { message: 'Supabase Library konnte nicht geladen werden' } 
+                        }));
+                    }
+                    return false;
+                }
+                
+                // Supabase Client erstellen und global verfügbar machen
+                window.supabaseClient = supabaseObj.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                
+                if (!window.supabaseClient) {
+                    throw new Error('Supabase Client wurde nicht erstellt (null)');
+                }
+                
+                console.log('✅ Supabase Client erfolgreich initialisiert');
+                window.dispatchEvent(new CustomEvent('supabase-ready'));
+                return true;
+            } catch (error) {
+                console.error('❌ Fehler beim Initialisieren von Supabase:', error);
+                if (retryCount < 5) {
+                    setTimeout(() => initializeSupabaseClient(retryCount + 1), 300);
+                    return false;
+                }
+                console.warn('⚠️ Seite funktioniert weiterhin, aber Speichern wird nicht funktionieren');
+                window.supabaseClient = null;
+                window.dispatchEvent(new CustomEvent('supabase-error', { 
+                    detail: { message: error.message || 'Unbekannter Fehler beim Initialisieren' } 
+                }));
+                return false;
+            }
+        }
+        
+        // Prüfe ob Supabase bereits geladen wurde
+        function checkExistingSupabase() {
+            const supabaseObj = window.supabase || window.Supabase || (typeof supabase !== 'undefined' ? supabase : null);
+            
+            if (supabaseObj && typeof supabaseObj.createClient === 'function') {
+                console.log('✅ Supabase bereits verfügbar, initialisiere Client...');
+                return initializeSupabaseClient(0);
+            }
+            
+            return false;
+        }
+        
+        // Starte Supabase Initialisierung sofort
+        if (!checkExistingSupabase()) {
+            // Lade Supabase Library
+            const supabaseScript = document.createElement('script');
+            supabaseScript.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
+            supabaseScript.onload = () => {
+                console.log('✅ Supabase Library geladen');
+                initializeSupabaseClient(0);
+            };
+            supabaseScript.onerror = () => {
+                console.error('❌ Fehler beim Laden der Supabase Library');
+                window.dispatchEvent(new CustomEvent('supabase-error', { 
+                    detail: { message: 'Fehler beim Laden der Supabase Library' } 
+                }));
+            };
+            document.head.appendChild(supabaseScript);
+        }
+    </script>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="fixed inset-0 bg-white z-50 flex items-center justify-center">
+        <div class="w-full max-w-2xl mx-auto p-8">
+            <div class="text-center mb-8">
+                <h2 class="text-3xl font-bold text-gray-800 mb-2">Lade Schließplan Generator</h2>
+                <p class="text-gray-600">Bitte warten Sie, während wir alle Komponenten initialisieren...</p>
+            </div>
+            
+            <!-- Progress Bar -->
+            <div class="mb-8">
+                <div class="w-full bg-gray-200 rounded-full h-4 mb-2">
+                    <div id="loading-progress-bar" class="bg-[#1a3d5c] h-4 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+                <div class="text-center">
+                    <span id="loading-progress-text" class="text-sm font-semibold text-gray-700">0%</span>
+                </div>
+            </div>
+            
+            <!-- Status Items -->
+            <div id="loading-status-items" class="space-y-2 max-h-64 overflow-y-auto"></div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="w-full max-w-7xl mx-auto bg-white rounded-2xl shadow-xl p-6 md:p-10 relative">
+
+        <div class="flex items-center justify-between mb-4">
+            <div id="logo" class="flex items-center">
+                <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiBmaWxsPSIjN0NBQ0YwIi8+Cjx0ZXh0IHg9IjE2IiB5PSIyMCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0IiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+TDwvdGV4dD4KPC9zdmc+" alt="Firmenlogo" class="h-8 w-auto">
+            </div>
+            
+            <!-- User Icon (nur sichtbar wenn eingeloggt) -->
+            <div id="user-menu-container" class="hidden relative">
+                <button id="user-menu-btn" class="flex items-center justify-center w-10 h-10 rounded-full bg-gray-200 hover:bg-gray-300 transition-colors cursor-pointer">
+                    <i class="fas fa-user text-gray-600 text-lg"></i>
+                </button>
+                
+                <!-- Dropdown Menu -->
+                <div id="user-menu-dropdown" class="hidden absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                    <div class="p-4 border-b border-gray-200">
+                        <p class="text-sm font-semibold text-gray-800" id="user-menu-name">Benutzer</p>
+                        <p class="text-xs text-gray-500 mt-1" id="user-menu-email">email@example.com</p>
+                    </div>
+                    <div class="py-2">
+                        <a href="/dashboard" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
+                            <i class="fas fa-tachometer-alt mr-2"></i>
+                            Zum Dashboard
+                        </a>
+                        <button id="user-profile-btn" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
+                            <i class="fas fa-user-circle mr-2"></i>
+                            Profil anzeigen
+                        </button>
+                        <button id="user-logout-btn" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors">
+                            <i class="fas fa-sign-out-alt mr-2"></i>
+                            Abmelden
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="questionnaire-container">
+            <h1 class="text-3xl font-bold text-center text-gray-800 mb-2">Ihr Weg zum perfekten Schließplan</h1>
+            <p id="questionnaire-subtitle" class="text-center text-gray-500 mb-8">Schritt für Schritt zu Ihrer individuellen Schließanlage.</p>
+            <div class="w-full bg-gray-200 rounded-full h-2.5 mb-8">
+                <div id="progress-bar" class="bg-[#1a3d5c] h-2.5 rounded-full progress-bar-fill" style="width: 0%"></div>
+            </div>
+            <!-- Container für Fragen und den neuen Zylinder-Assistenten -->
+            <div id="content-container"></div>
+            <div class="flex justify-between mt-8" id="navigation-buttons">
+                <button id="prev-btn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg transition-colors disabled:opacity-50">Zurück</button>
+                <button id="next-btn" class="bg-[#1a3d5c] hover:bg-[#143149] text-white font-bold py-2 px-6 rounded-lg transition-colors">Weiter</button>
+            </div>
+        </div>
+
+        <div id="schliessplan-container" class="hidden">
+            <!-- Schließplan Tabelle wird hier eingefügt -->
+        </div>
+    </div>
+
+    <!-- Profil Modal -->
+    <div id="profile-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-8 md:p-10">
+            <!-- Header -->
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-2xl font-bold text-gray-800">Mein Profil</h3>
+                <button id="profile-close-btn" class="text-gray-400 hover:text-gray-600 text-2xl">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <!-- Profil Info -->
+            <div id="profile-content" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Vorname</label>
+                    <p id="profile-vorname" class="text-gray-800">-</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Nachname</label>
+                    <p id="profile-nachname" class="text-gray-800">-</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">E-Mail</label>
+                    <p id="profile-email" class="text-gray-800">-</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">E-Mail bestätigt</label>
+                    <p id="profile-email-confirmed" class="text-gray-800">
+                        <span id="profile-email-status" class="inline-flex items-center">
+                            <i class="fas fa-circle text-gray-400 mr-2"></i>
+                            Wird geladen...
+                        </span>
+                    </p>
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="flex gap-3 mt-6">
+                <button id="profile-close-btn-bottom" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-6 rounded-xl transition-colors">
+                    Schließen
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        // Starte Konfigurator direkt ohne Auth-Screen
+        document.addEventListener('DOMContentLoaded', () => {
+            // Prüfe ob Session fortgesetzt werden soll
+            const continueSession = sessionStorage.getItem('continueSession');
+            const startNewConfig = sessionStorage.getItem('startNewConfig');
+            
+            // Starte Konfigurator direkt
+            if (continueSession === 'true') {
+                // Session wird in script.js wiederhergestellt
+            } else if (startNewConfig === 'true') {
+                // Neuer Konfigurator - Session-Daten löschen
+                sessionStorage.removeItem('startNewConfig');
+                localStorage.removeItem('lastSchliessplanSession');
+            }
+            
+            // Starte Anwendung
+            if (typeof startApplication === 'function') {
+                startApplication();
+            }
+        });
+    </script>
+</body>
+</html>
+

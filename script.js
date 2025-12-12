@@ -3020,8 +3020,8 @@ function initializeAuthScreen() {
     if (guestBtn) {
         guestBtn.addEventListener('click', () => {
             console.log('👤 Als Gast fortfahren geklickt');
-            hideAuthScreen();
-            // Fragebogen wird automatisch angezeigt
+            // Weiterleitung zu /start
+            window.location.href = '/start';
         });
     }
     

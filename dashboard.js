@@ -73,7 +73,7 @@ function initializeEventListeners() {
         newConfigBtn.addEventListener('click', () => {
             // Speichere Session-Status: Neuer Konfigurator
             sessionStorage.setItem('startNewConfig', 'true');
-            window.location.href = '/';
+            window.location.href = '/start';
         });
     }
     
@@ -86,7 +86,7 @@ function initializeEventListeners() {
             if (lastSession) {
                 sessionStorage.setItem('continueSession', 'true');
                 sessionStorage.setItem('lastSessionData', lastSession);
-                window.location.href = '/';
+                window.location.href = '/start';
             } else {
                 alert('Keine gespeicherte Session gefunden. Starten Sie einen neuen Konfigurator.');
             }
