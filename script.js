@@ -2539,19 +2539,32 @@ async function savePlanToProfile() {
 // Zeige Erfolgs-Overlay mit coolen Effekt
 function showSuccessOverlay() {
     const overlay = document.getElementById('success-overlay');
-    if (!overlay) return;
+    if (!overlay) {
+        console.warn('⚠️ Success Overlay nicht gefunden');
+        return;
+    }
+    
+    // Entferne Confetti-Container falls vorhanden
+    const confettiContainer = document.getElementById('confetti-container');
+    if (confettiContainer) {
+        confettiContainer.innerHTML = '';
+    }
     
     // Erstelle Confetti
     createConfetti();
     
-    // Zeige Overlay
+    // Zeige Overlay mit Animation
     overlay.classList.remove('hidden');
+    overlay.style.display = 'flex';
+    
+    // Trigger Animationen durch Reflow
+    void overlay.offsetWidth;
     
     // Verstecke Overlay nach 3 Sekunden
     setTimeout(() => {
         overlay.classList.add('hidden');
+        overlay.style.display = 'none';
         // Entferne Confetti
-        const confettiContainer = document.getElementById('confetti-container');
         if (confettiContainer) {
             confettiContainer.innerHTML = '';
         }
@@ -2561,28 +2574,45 @@ function showSuccessOverlay() {
 // Erstelle Confetti-Effekt
 function createConfetti() {
     const container = document.getElementById('confetti-container');
-    if (!container) return;
+    if (!container) {
+        console.warn('⚠️ Confetti Container nicht gefunden');
+        return;
+    }
     
     const colors = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899'];
     const confettiCount = 50;
     
+    // Leere Container zuerst
+    container.innerHTML = '';
+    
     for (let i = 0; i < confettiCount; i++) {
         const confetti = document.createElement('div');
         confetti.className = 'confetti';
-        confetti.style.left = Math.random() * 100 + '%';
+        
+        const left = Math.random() * 100;
+        const delay = Math.random() * 0.5;
+        const duration = Math.random() * 2 + 2;
+        const size = Math.random() * 10 + 5;
+        
+        confetti.style.left = left + '%';
+        confetti.style.top = '-10px';
         confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-        confetti.style.animationDelay = Math.random() * 0.5 + 's';
-        confetti.style.animationDuration = (Math.random() * 2 + 2) + 's';
-        confetti.style.width = (Math.random() * 10 + 5) + 'px';
-        confetti.style.height = confetti.style.width;
+        confetti.style.animationDelay = delay + 's';
+        confetti.style.animationDuration = duration + 's';
+        confetti.style.width = size + 'px';
+        confetti.style.height = size + 'px';
         confetti.style.borderRadius = Math.random() > 0.5 ? '50%' : '0';
+        confetti.style.position = 'absolute';
+        confetti.style.zIndex = '101';
         
         container.appendChild(confetti);
         
         // Entferne nach Animation
         setTimeout(() => {
-            confetti.remove();
-        }, 5000);
+            if (confetti.parentNode) {
+                confetti.remove();
+            }
+        }, (duration + delay) * 1000);
     }
 }
 
@@ -3970,7 +4000,9 @@ async function handleLogout() {
                 console.log('✅ Erfolgreich abgemeldet');
                 hideUserMenu();
                 hideProfileModal();
-                showAuthScreen();
+                
+                // Navigiere zur Login-Seite
+                window.location.href = '/login';
             }
         }
     } catch (error) {
