@@ -2514,15 +2514,16 @@ async function savePlanToProfile() {
         
         console.log('✅ Schließplan in Datenbank gespeichert:', planDataResult);
         
-        // Automatisch HTML in Mediathek speichern
+        // AUTOMATISCH HTML in Mediathek speichern (immer ausführen)
+        console.log('📤 Starte automatischen Export in Mediathek...');
         try {
-            console.log('📤 Starte Upload in Mediathek...');
             const mediathekResult = await saveToMediathek(supabaseClient, planDataResult.id, kundeData.id, planDataResult);
-            console.log('✅ Schließplan HTML erfolgreich in Mediathek gespeichert:', mediathekResult);
+            console.log('✅ Schließplan HTML erfolgreich automatisch in Mediathek exportiert:', mediathekResult);
+            console.log('📁 HTML-Datei URL:', mediathekResult?.fileUrl);
         } catch (mediathekError) {
-            console.error('❌ Fehler beim Speichern in Mediathek:', mediathekError);
-            // Zeige Warnung, aber nicht als Fehler (Plan ist trotzdem gespeichert)
-            console.warn('⚠️ Plan ist in Datenbank gespeichert, aber HTML-Upload fehlgeschlagen:', mediathekError.message);
+            console.error('❌ Fehler beim automatischen Export in Mediathek:', mediathekError);
+            // Fehler anzeigen, aber Speicherung in DB war erfolgreich
+            alert(`Hinweis: Der Plan wurde gespeichert, aber der automatische HTML-Export in die Mediathek ist fehlgeschlagen: ${mediathekError.message}`);
         }
         
         // Zeige Erfolgs-Overlay mit coolen Effekt
