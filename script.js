@@ -2512,14 +2512,17 @@ async function savePlanToProfile() {
             throw new Error(`Fehler beim Speichern: ${planError.message}`);
         }
         
-        console.log('✅ Schließplan gespeichert:', planDataResult);
+        console.log('✅ Schließplan in Datenbank gespeichert:', planDataResult);
         
-        // Automatisch in Mediathek speichern
+        // Automatisch HTML in Mediathek speichern
         try {
-            await saveToMediathek(supabaseClient, planDataResult.id, kundeData.id, planDataResult);
-            console.log('✅ Schließplan erfolgreich in Mediathek gespeichert');
+            console.log('📤 Starte Upload in Mediathek...');
+            const mediathekResult = await saveToMediathek(supabaseClient, planDataResult.id, kundeData.id, planDataResult);
+            console.log('✅ Schließplan HTML erfolgreich in Mediathek gespeichert:', mediathekResult);
         } catch (mediathekError) {
-            console.warn('⚠️ Fehler beim Speichern in Mediathek (Plan ist trotzdem gespeichert):', mediathekError);
+            console.error('❌ Fehler beim Speichern in Mediathek:', mediathekError);
+            // Zeige Warnung, aber nicht als Fehler (Plan ist trotzdem gespeichert)
+            console.warn('⚠️ Plan ist in Datenbank gespeichert, aber HTML-Upload fehlgeschlagen:', mediathekError.message);
         }
         
         // Zeige Erfolgs-Overlay mit coolen Effekt
@@ -2774,15 +2777,22 @@ function generateSchliessplanHTML() {
 async function saveToMediathek(supabaseClient, schliessplanId, kundeId, schliessplanData) {
     try {
         // 1. HTML-Inhalt generieren
+        console.log('📝 Generiere HTML-Inhalt für Schließplan...');
         const htmlContent = generateSchliessplanHTML();
+        if (!htmlContent || htmlContent.trim().length === 0) {
+            throw new Error('HTML-Inhalt konnte nicht generiert werden');
+        }
         const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+        console.log(`📦 HTML generiert: ${blob.size} Bytes`);
         
         // 2. Dateiname erstellen
         const timestamp = new Date().toISOString().split('T')[0];
         const fileName = `schliessplan-${timestamp}-${Date.now()}.html`;
         const filePath = `${kundeId}/${schliessplanId}/${fileName}`;
+        console.log(`📁 Dateipfad: ${filePath}`);
         
         // 3. Datei in Supabase Storage hochladen
+        console.log('⬆️ Lade HTML-Datei in Supabase Storage hoch...');
         const { data: uploadData, error: uploadError } = await supabaseClient.storage
             .from('schliessplaene')
             .upload(filePath, blob, {
@@ -2791,15 +2801,19 @@ async function saveToMediathek(supabaseClient, schliessplanId, kundeId, schliess
             });
         
         if (uploadError) {
+            console.error('❌ Upload-Fehler:', uploadError);
             throw new Error(`Upload-Fehler: ${uploadError.message}`);
         }
+        console.log('✅ HTML-Datei erfolgreich hochgeladen:', uploadData);
         
         // 4. Öffentliche URL generieren
         const { data: { publicUrl } } = supabaseClient.storage
             .from('schliessplaene')
             .getPublicUrl(filePath);
+        console.log('🔗 Öffentliche URL:', publicUrl);
         
         // 5. Metadaten in Mediathek-Tabelle speichern
+        console.log('💾 Speichere Metadaten in Mediathek-Tabelle...');
         const { data: mediathekEntry, error: dbError } = await supabaseClient
             .from('mediathek')
             .insert([{
@@ -2818,8 +2832,10 @@ async function saveToMediathek(supabaseClient, schliessplanId, kundeId, schliess
             .single();
         
         if (dbError) {
+            console.error('❌ Datenbank-Fehler:', dbError);
             throw new Error(`Datenbank-Fehler: ${dbError.message}`);
         }
+        console.log('✅ Metadaten gespeichert:', mediathekEntry);
         
         // 6. Schließplan mit Mediathek-ID verknüpfen
         const exportDateien = [
