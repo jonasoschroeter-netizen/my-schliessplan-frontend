@@ -1797,30 +1797,32 @@ function renderCylinderFinder() {
     const otherCylindersHtml = otherCylinders.map(cylinder => createCylinderCard(cylinder, false)).join('');
 
     elements.contentContainer.innerHTML = `
-        <div class="text-center mb-8">
-            <h2 class="text-2xl font-semibold text-gray-700">Verfügbare Zylinder-Systeme</h2>
-            <p class="text-gray-500">Wählen Sie das passende Zylinder-System für Ihren Schließplan.</p>
-        </div>
-        
-        <!-- Bester Zylinder - Quer angezeigt -->
-        <div class="mb-12">
-            ${bestCylinderHtml}
-        </div>
-        
-        ${otherCylinders.length > 0 ? `
-        <div class="text-center mb-6">
-            <h3 class="text-xl font-semibold text-gray-600">Andere passende Optionen</h3>
-            <p class="text-gray-500">Diese Systeme könnten ebenfalls eine gute Wahl sein.</p>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
-            ${otherCylindersHtml}
-        </div>
-        ` : ''}
-        
-        <div class="text-center mt-12">
-            <button onclick="generatePlan()" class="bg-[#1a3d5c] text-white px-8 py-3 rounded-lg hover:bg-[#2a4d6c] transition-colors">
-                <i class="fas fa-cog mr-2"></i>Schließplan generieren
-            </button>
+        <div class="max-w-6xl mx-auto px-4">
+            <div class="text-center mb-8">
+                <h2 class="text-2xl font-semibold text-gray-700">Verfügbare Zylinder-Systeme</h2>
+                <p class="text-gray-500">Wählen Sie das passende Zylinder-System für Ihren Schließplan.</p>
+            </div>
+            
+            <!-- Bester Zylinder - Quer angezeigt -->
+            <div class="mb-12">
+                ${bestCylinderHtml}
+            </div>
+            
+            ${otherCylinders.length > 0 ? `
+            <div class="text-center mb-6">
+                <h3 class="text-xl font-semibold text-gray-600">Andere passende Optionen</h3>
+                <p class="text-gray-500">Diese Systeme könnten ebenfalls eine gute Wahl sein.</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+                ${otherCylindersHtml}
+            </div>
+            ` : ''}
+            
+            <div class="text-center mt-12">
+                <button onclick="generatePlan()" class="bg-[#1a3d5c] text-white px-8 py-3 rounded-lg hover:bg-[#2a4d6c] transition-colors">
+                    <i class="fas fa-cog mr-2"></i>Schließplan generieren
+                </button>
+            </div>
         </div>
     `;
 }
