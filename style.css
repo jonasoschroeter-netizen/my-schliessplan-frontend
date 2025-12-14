@@ -291,16 +291,15 @@
 
 
 .schliessplan-table {
-    font-size: 15px;
+    font-size: 16px;
     width: 100%;
 }
 
 .schliessplan-table th,
 .schliessplan-table td {
-    font-size: 15px;
-    padding: 14px 12px;
+    font-size: 16px;
+    padding: 16px 14px;
     border: 1px solid #d1d5db;
-    padding: 8px;
     text-align: center;
     vertical-align: middle;
 }
@@ -308,27 +307,27 @@
 .schliessplan-header-main {
     background-color: #374151;
     color: white;
-    padding: 12px 8px;
+    padding: 16px 12px;
     text-align: center;
     font-weight: bold;
-    font-size: 16px;
+    font-size: 18px;
 }
 
 .schliessplan-header-sub {
     background-color: #2a95c3;
     color: white;
-    font-size: 14px;
-    padding: 10px 8px;
+    font-size: 16px;
+    padding: 14px 10px;
 }
 
 .input-cell {
     background-color: #f9fafb;
     border-radius: 6px;
     border: 1px solid #d1d5db;
-    padding: 8px 12px;
+    padding: 10px 14px;
     width: 100%;
     box-sizing: border-box;
-    font-size: 14px;
+    font-size: 15px;
 }
 
 input:focus,
@@ -339,12 +338,12 @@ select:focus {
 
 .schliessmatrix-cell {
     cursor: pointer;
-    width: 56px;
-    height: 56px;
-    min-width: 56px;
-    min-height: 56px;
+    width: 64px;
+    height: 64px;
+    min-width: 64px;
+    min-height: 64px;
     transition: background-color 0.2s;
-    font-size: 18px;
+    font-size: 20px;
 }
 
     .schliessmatrix-cell:hover {
@@ -360,14 +359,14 @@ select:focus {
     writing-mode: vertical-rl;
     transform: rotate(180deg);
     white-space: nowrap;
-    padding: 12px 6px;
+    padding: 14px 8px;
     background-color: #2a95c3;
     color: white;
     font-weight: bold;
-    font-size: 14px;
-    width: 70px;
-    min-width: 70px;
-    max-width: 70px;
+    font-size: 15px;
+    width: 80px;
+    min-width: 80px;
+    max-width: 80px;
 }
 
 .schliessplan-data-vertical {
@@ -389,8 +388,8 @@ select:focus {
     flex: 1;
     position: relative;
     border-left: 1px solid #d1d5db;
-    min-width: 60px;
-    height: 180px;
+    min-width: 70px;
+    height: 200px;
 }
 
     .schluessel-header-zelle input {
