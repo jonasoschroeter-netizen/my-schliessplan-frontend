@@ -2,13 +2,22 @@
 // LOGIN SEITE LOGIK
 // ============================================
 
+function isSupabaseClientReady() {
+    return supabaseClient && supabaseClient.auth && typeof supabaseClient.auth.getUser === 'function';
+}
+
 // Prüfe ob bereits eingeloggt
 async function checkAuthState() {
+    if (!isSupabaseClientReady()) {
+        showLoginStatus('error', 'Login-System ist nicht erreichbar. Bitte Netzwerk/Supabase-Konfiguration prüfen.');
+        return;
+    }
+
     const { data: { user }, error } = await supabaseClient.auth.getUser();
     
     if (!error && user) {
         // Bereits eingeloggt → Weiterleitung zu Dashboard
-        window.location.href = '/dashboard';
+        window.location.href = 'dashboard.html';
     }
 }
 
@@ -21,6 +30,11 @@ async function handleLogin(event) {
     const submitBtn = document.getElementById('login-submit-btn');
     const statusDiv = document.getElementById('login-status');
     
+    if (!isSupabaseClientReady()) {
+        showLoginStatus('error', 'Login-System ist nicht erreichbar. Bitte später erneut versuchen.');
+        return;
+    }
+
     // Validierung
     if (!email || !password) {
         showLoginStatus('error', 'Bitte geben Sie E-Mail und Passwort ein.');
@@ -75,7 +89,7 @@ async function handleLogin(event) {
         
         // Weiterleitung zu Dashboard
         setTimeout(() => {
-            window.location.href = '/dashboard';
+            window.location.href = 'dashboard.html';
         }, 500);
         
     } catch (error) {

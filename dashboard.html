@@ -7,20 +7,43 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=larger-logo-20260526">
+    <script src="env-config.js?v=contact-audit-20260525"></script>
     <!-- Supabase Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script>
-        // Supabase Credentials
-        const SUPABASE_URL = 'https://gffecqdaybyhhdfkkyqi.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmZmVjcWRheWJ5aGhkZmtreXFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDY5NDYsImV4cCI6MjA3NzA4Mjk0Nn0.7iZ5UY2mSepEAhtPKlQ71JdIzmsLGzgU3RvmEJxzln4';
-        
-        // Initialisiere Supabase Client
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        var supabaseClient = null;
+        (function () {
+            var fallback = {
+                url: 'https://gffecqdaybyhhdfkkyqi.supabase.co',
+                anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmZmVjcWRheWJ5aGhkZmtreXFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDY5NDYsImV4cCI6MjA3NzA4Mjk0Nn0.7iZ5UY2mSepEAhtPKlQ71JdIzmsLGzgU3RvmEJxzln4',
+                mode: 'cloud-fallback'
+            };
+            var _sb = window.__SCHLIESSPLAN_SB__ || fallback;
+            if (!_sb.url || !_sb.anonKey) _sb = fallback;
+            window.__SCHLIESSPLAN_SB__ = _sb;
+
+            try {
+                var supabaseNamespace =
+                    (typeof supabase !== 'undefined' && supabase) ||
+                    window.supabase ||
+                    window.Supabase;
+
+                if (!supabaseNamespace || typeof supabaseNamespace.createClient !== 'function') {
+                    throw new Error('Supabase Library nicht geladen');
+                }
+
+                supabaseClient = supabaseNamespace.createClient(_sb.url, _sb.anonKey);
+                window.supabaseClient = supabaseClient;
+            } catch (error) {
+                console.warn('Supabase Client konnte nicht initialisiert werden:', error);
+                window.supabaseClient = null;
+            }
+        })();
     </script>
 </head>
-<body class="flex items-center justify-center min-h-screen p-4 bg-gray-50">
-    <div class="w-full max-w-4xl mx-auto bg-white rounded-2xl shadow-xl p-6 md:p-10">
+<body class="program-premium flex items-center justify-center min-h-screen p-4 bg-gray-50">
+    <div class="app-shell dashboard-shell w-full max-w-4xl mx-auto bg-white rounded-2xl shadow-xl p-6 md:p-10">
         <!-- Header -->
         <div class="flex items-center justify-between mb-8">
             <div class="flex items-center space-x-4">
@@ -28,6 +51,14 @@
                 <h1 class="text-2xl font-bold text-gray-800">Dashboard</h1>
             </div>
             
+            <a href="monitor-dashboard.html" class="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-bold text-gray-700 hover:border-[#203d5d] hover:text-[#203d5d]">
+                <i class="fas fa-heart-pulse"></i>
+                <span>Systemstatus</span></a>
+            <a href="interaction-audit.html" class="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-bold text-gray-700 hover:border-[#203d5d] hover:text-[#203d5d]">
+                <i class="fas fa-route"></i>
+                <span>Interaktions-Audit</span>
+            </a>
+
             <!-- User Menu -->
             <div id="user-menu-container" class="relative">
                 <button id="user-menu-btn" class="flex items-center justify-center w-10 h-10 rounded-full bg-gray-200 hover:bg-gray-300 transition-colors cursor-pointer">
@@ -63,8 +94,8 @@
         <!-- Optionen -->
         <div class="grid md:grid-cols-2 gap-6 mb-8">
             <!-- Neuer Konfigurator -->
-            <div class="border-2 border-gray-200 rounded-xl p-6 hover:border-[#1a3d5c] transition-colors cursor-pointer" id="new-config-btn">
-                <div class="flex items-center justify-center w-16 h-16 bg-[#1a3d5c] rounded-full mb-4 mx-auto">
+            <div class="border-2 border-gray-200 rounded-xl p-6 hover:border-[#203d5d] transition-colors cursor-pointer" id="new-config-btn">
+                <div class="flex items-center justify-center w-16 h-16 bg-[#203d5d] rounded-full mb-4 mx-auto">
                     <i class="fas fa-plus text-white text-2xl"></i>
                 </div>
                 <h3 class="text-lg font-semibold text-gray-800 text-center mb-2">Neuer Konfigurator</h3>
@@ -72,18 +103,23 @@
             </div>
 
             <!-- Session fortsetzen -->
-            <div class="border-2 border-gray-200 rounded-xl p-6 hover:border-[#1a3d5c] transition-colors cursor-pointer" id="continue-session-btn">
+            <div class="border-2 border-gray-200 rounded-xl p-6 hover:border-[#203d5d] transition-colors cursor-pointer" id="continue-session-btn">
                 <div class="flex items-center justify-center w-16 h-16 bg-green-600 rounded-full mb-4 mx-auto">
                     <i class="fas fa-play text-white text-2xl"></i>
                 </div>
-                <h3 class="text-lg font-semibold text-gray-800 text-center mb-2">Session fortsetzen</h3>
-                <p class="text-gray-600 text-center text-sm">Setzen Sie Ihre letzte Session fort</p>
+                <h3 class="text-lg font-semibold text-gray-800 text-center mb-2">Letzten Plan fortsetzen</h3>
+                <p class="text-gray-600 text-center text-sm">Öffnet den zuletzt gespeicherten Schließplan</p>
             </div>
         </div>
 
         <!-- Gespeicherte Schließpläne -->
         <div class="mt-8">
-            <h3 class="text-lg font-semibold text-gray-800 mb-4">Meine Schließpläne</h3>
+            <div class="mb-4 flex items-center justify-between gap-3">
+                <h3 class="text-lg font-semibold text-gray-800">Meine Schließpläne</h3>
+                <button type="button" onclick="loadSavedPlans()" class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100">
+                    <i class="fas fa-sync-alt mr-2"></i>Aktualisieren
+                </button>
+            </div>
             <div id="saved-plans-container" class="space-y-3">
                 <div class="text-center text-gray-500 py-8">
                     <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
@@ -93,7 +129,7 @@
         </div>
     </div>
 
-    <script src="dashboard.js"></script>
+    <script src="dashboard.js?v=contact-audit-20260525"></script>
 </body>
 </html>
 

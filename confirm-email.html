@@ -64,9 +64,10 @@
             100% { transform: rotate(360deg); }
         }
     </style>
+    <link rel="stylesheet" href="style.css?v=qa-hardening-20260526">
 </head>
-<body>
-    <div class="container">
+<body class="program-premium">
+    <div class="container app-shell auth-shell">
         <div id="loading-state">
             <div class="spinner"></div>
             <h1 class="text-2xl font-bold text-center text-gray-800 mb-4">E-Mail wird bestätigt...</h1>
@@ -105,14 +106,37 @@
     </div>
 
     <!-- Supabase Client -->
+    <script src="env-config.js?v=contact-audit-20260525"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script>
-        // Supabase Credentials
-        const SUPABASE_URL = 'https://gffecqdaybyhhdfkkyqi.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmZmVjcWRheWJ5aGhkZmtreXFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDY5NDYsImV4cCI6MjA3NzA4Mjk0Nn0.7iZ5UY2mSepEAhtPKlQ71JdIzmsLGzgU3RvmEJxzln4';
-        
-        // Initialisiere Supabase Client
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        var supabaseClient = null;
+        (function () {
+            var fallback = {
+                url: 'https://gffecqdaybyhhdfkkyqi.supabase.co',
+                anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmZmVjcWRheWJ5aGhkZmtreXFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDY5NDYsImV4cCI6MjA3NzA4Mjk0Nn0.7iZ5UY2mSepEAhtPKlQ71JdIzmsLGzgU3RvmEJxzln4',
+                mode: 'cloud-fallback'
+            };
+            var _sb = window.__SCHLIESSPLAN_SB__ || fallback;
+            if (!_sb.url || !_sb.anonKey) _sb = fallback;
+            window.__SCHLIESSPLAN_SB__ = _sb;
+
+            try {
+                var supabaseNamespace =
+                    (typeof supabase !== 'undefined' && supabase) ||
+                    window.supabase ||
+                    window.Supabase;
+
+                if (!supabaseNamespace || typeof supabaseNamespace.createClient !== 'function') {
+                    throw new Error('Supabase Library nicht geladen');
+                }
+
+                supabaseClient = supabaseNamespace.createClient(_sb.url, _sb.anonKey);
+                window.supabaseClient = supabaseClient;
+            } catch (error) {
+                console.warn('Supabase Client konnte nicht initialisiert werden:', error);
+                window.supabaseClient = null;
+            }
+        })();
 
         // Funktion zum Speichern der E-Mail-Bestätigung
         async function saveEmailConfirmation(userId) {

@@ -7,12 +7,23 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=row-drag-20260526c">
+    <script src="env-config.js?v=contact-audit-20260525"></script>
     <!-- Supabase Client - wird über CDN Script geladen (robuster als ES Module) -->
     <script>
-        // Supabase Credentials
-        const SUPABASE_URL = 'https://gffecqdaybyhhdfkkyqi.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmZmVjcWRheWJ5aGhkZmtreXFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDY5NDYsImV4cCI6MjA3NzA4Mjk0Nn0.7iZ5UY2mSepEAhtPKlQ71JdIzmsLGzgU3RvmEJxzln4';
+        var SUPABASE_FALLBACK_URL = 'https://gffecqdaybyhhdfkkyqi.supabase.co';
+        var SUPABASE_FALLBACK_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmZmVjcWRheWJ5aGhkZmtreXFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDY5NDYsImV4cCI6MjA3NzA4Mjk0Nn0.7iZ5UY2mSepEAhtPKlQ71JdIzmsLGzgU3RvmEJxzln4';
+        var _sbCfg = window.__SCHLIESSPLAN_SB__ || {};
+        if (!_sbCfg.url || !_sbCfg.anonKey) {
+            _sbCfg = {
+                url: SUPABASE_FALLBACK_URL,
+                anonKey: SUPABASE_FALLBACK_ANON_KEY,
+                mode: 'cloud-fallback'
+            };
+            window.__SCHLIESSPLAN_SB__ = _sbCfg;
+        }
+        var SUPABASE_URL = _sbCfg.url;
+        var SUPABASE_ANON_KEY = _sbCfg.anonKey;
         
         // Initialisiere Supabase nachdem das Script geladen ist
         function initializeSupabaseClient(retryCount = 0) {
@@ -103,32 +114,90 @@
         }
     </script>
 </head>
-<body class="flex items-center justify-center min-h-screen p-4">
+<body class="program-premium flex items-center justify-center min-h-screen p-4">
     <!-- Loading Screen -->
-    <div id="loading-screen" class="fixed inset-0 bg-white z-50 flex items-center justify-center">
-        <div class="w-full max-w-2xl mx-auto p-8">
-            <div class="text-center mb-8">
-                <h2 class="text-3xl font-bold text-gray-800 mb-2">Lade Schließplan Generator</h2>
-                <p class="text-gray-600">Bitte warten Sie, während wir alle Komponenten initialisieren...</p>
-            </div>
-            
-            <!-- Progress Bar -->
-            <div class="mb-8">
-                <div class="w-full bg-gray-200 rounded-full h-4 mb-2">
-                    <div id="loading-progress-bar" class="bg-[#1a3d5c] h-4 rounded-full transition-all duration-300" style="width: 0%"></div>
-                </div>
-                <div class="text-center">
-                    <span id="loading-progress-text" class="text-sm font-semibold text-gray-700">0%</span>
-                </div>
-            </div>
-            
-            <!-- Status Items -->
-            <div id="loading-status-items" class="space-y-2 max-h-64 overflow-y-auto"></div>
+    <div id="loading-screen" class="fixed inset-0 z-50 intro-film" aria-live="polite">
+        <div class="intro-backdrop" aria-hidden="true">
+            <div class="intro-grid"></div>
+            <div class="intro-scan"></div>
+            <div class="intro-shutter intro-shutter-top"></div>
+            <div class="intro-shutter intro-shutter-bottom"></div>
         </div>
+
+        <section class="intro-shell" aria-label="Schliessplan Generator wird geladen">
+            <div class="intro-stage" aria-hidden="true">
+                <div class="intro-film-strip">
+                    <span>Objektanalyse</span>
+                    <span>Tueren</span>
+                    <span>Funktionen</span>
+                    <span>Zylinder</span>
+                    <span>Matrix</span>
+                    <span>Schliessplan</span>
+                </div>
+
+                <div class="intro-blueprint">
+                    <div class="intro-route intro-route-a"></div>
+                    <div class="intro-route intro-route-b"></div>
+                    <div class="intro-route intro-route-c"></div>
+                    <div class="intro-data-node intro-data-node-a"></div>
+                    <div class="intro-data-node intro-data-node-b"></div>
+                    <div class="intro-data-node intro-data-node-c"></div>
+
+                    <div class="intro-door-frame">
+                        <div class="intro-door"></div>
+                        <div class="intro-door-glow"></div>
+                        <div class="intro-cylinder"></div>
+                    </div>
+
+                    <div class="intro-key">
+                        <span class="intro-key-head"></span>
+                        <span class="intro-key-core"></span>
+                        <span class="intro-key-shaft"></span>
+                        <span class="intro-key-bit intro-key-bit-a"></span>
+                        <span class="intro-key-bit intro-key-bit-b"></span>
+                    </div>
+                </div>
+
+                <div class="intro-title-reveal">
+                    <span>Analyse</span>
+                    <span>Zylinder</span>
+                    <span>Matrix</span>
+                    <span>Schliessplan</span>
+                </div>
+            </div>
+
+            <div class="intro-panel">
+                <div class="intro-brand-row">
+                    <div class="intro-mark" aria-hidden="true">
+                        <i class="fas fa-key"></i>
+                    </div>
+                    <div>
+                        <p class="intro-kicker">Live-Konfiguration</p>
+                        <h2>Schlie&szlig;plan Generator</h2>
+                    </div>
+                </div>
+                <p class="intro-copy">Objekt, T&uuml;ren, Funktionen und Zylinder-Systeme werden zu einer belastbaren Schlie&szlig;matrix verdichtet.</p>
+
+                <div class="intro-progress-wrap">
+                    <div class="intro-progress-track" aria-hidden="true">
+                        <div id="loading-progress-bar" class="intro-progress-bar" style="width: 0%"></div>
+                    </div>
+                    <span id="loading-progress-text" class="intro-progress-text">0%</span>
+                </div>
+
+                <div class="intro-status-frame">
+                    <div id="loading-status-items" class="space-y-3">
+                        <!-- Status items werden dynamisch eingefuegt -->
+                    </div>
+                </div>
+
+                <button type="button" id="intro-skip-btn" class="intro-skip-btn">Film reduzieren</button>
+            </div>
+        </section>
     </div>
 
     <!-- Main Content -->
-    <div class="w-full max-w-[90vw] mx-auto bg-white rounded-2xl shadow-xl p-8 md:p-12 relative">
+    <div class="app-shell w-full max-w-[90vw] mx-auto bg-white rounded-2xl shadow-xl p-8 md:p-12 relative">
 
         <div class="flex items-center justify-between mb-4">
             <div id="logo" class="flex items-center">
@@ -148,7 +217,7 @@
                         <p class="text-xs text-gray-500 mt-1" id="user-menu-email">email@example.com</p>
                     </div>
                     <div class="py-2">
-                        <a href="/dashboard" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
+                        <a href="dashboard.html" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
                             <i class="fas fa-tachometer-alt mr-2"></i>
                             Zum Dashboard
                         </a>
@@ -169,13 +238,13 @@
             <h1 class="text-3xl font-bold text-center text-gray-800 mb-2">Ihr Weg zum perfekten Schließplan</h1>
             <p id="questionnaire-subtitle" class="text-center text-gray-500 mb-8">Schritt für Schritt zu Ihrer individuellen Schließanlage.</p>
             <div class="w-full bg-gray-200 rounded-full h-2.5 mb-8">
-                <div id="progress-bar" class="bg-[#1a3d5c] h-2.5 rounded-full progress-bar-fill" style="width: 0%"></div>
+                <div id="progress-bar" class="bg-[#203d5d] h-2.5 rounded-full progress-bar-fill" style="width: 0%"></div>
             </div>
             <!-- Container für Fragen und den neuen Zylinder-Assistenten -->
             <div id="content-container"></div>
             <div class="flex justify-between mt-8" id="navigation-buttons">
                 <button id="prev-btn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 px-8 rounded-lg transition-colors disabled:opacity-50 text-base">Zurück</button>
-                <button id="next-btn" class="bg-[#1a3d5c] hover:bg-[#143149] text-white font-bold py-3 px-8 rounded-lg transition-colors text-base">Weiter</button>
+                <button id="next-btn" class="bg-[#203d5d] hover:bg-[#1a344f] text-white font-bold py-3 px-8 rounded-lg transition-colors text-base">Weiter</button>
             </div>
         </div>
 
@@ -183,7 +252,7 @@
             <div class="flex justify-between items-center mb-4">
                 <h1 class="text-3xl font-bold text-gray-800">Ihr persönlicher Schließplan</h1>
                 <div class="flex gap-3">
-                    <button id="export-html-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg flex items-center transition-colors text-base">
+                    <button id="export-html-btn" class="bg-[#203d5d] hover:bg-[#1a344f] text-white font-bold py-3 px-6 rounded-lg flex items-center transition-colors text-base">
                         <i class="fas fa-file-code mr-2 text-lg"></i> Als HTML exportieren
                     </button>
                     <button id="back-to-questions-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 px-6 rounded-lg flex items-center text-base"><i class="fas fa-pencil-alt mr-2 text-lg"></i> Konfiguration bearbeiten</button>
@@ -194,15 +263,16 @@
                 <div class="flex items-center gap-2"><div class="w-4 h-4 bg-white border"></div><span>Mechanisch</span></div>
                 <div class="flex items-center gap-2"><div class="w-4 h-4" style="background-color: #e0f2fe;"></div><span>Elektronisch</span></div>
             </div>
-            <div class="overflow-x-auto">
+            <div class="w-full min-h-min shrink-0 overflow-x-auto">
                 <table class="w-full border-collapse schliessplan-table">
                     <thead>
                         <tr>
-                            <th colspan="8" class="schliessplan-header-main">Schließzylinder</th>
+                            <th colspan="9" class="schliessplan-header-main">Schließzylinder</th>
                             <td class="border-none bg-gray-100"></td>
                             <th id="schluessel-header-main" colspan="2" class="schliessplan-header-main">Schlüsselmatrix</th>
                         </tr>
                         <tr>
+                            <th class="schliessplan-header-sub row-drag-header" aria-label="Zeilen verschieben"></th>
                             <th class="schliessplan-header-sub">POS</th>
                             <th class="schliessplan-header-sub">Türbezeichnung</th>
                             <th class="schliessplan-header-sub">Zylindertyp</th>
@@ -221,18 +291,21 @@
                     <tbody id="schliessplan-body"></tbody>
                 </table>
             </div>
-            <div class="mt-4 flex gap-3">
+                                    <div class="mt-4 flex flex-wrap gap-3">
                 <button id="add-row-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg flex items-center text-base">
-                    <i class="fas fa-plus mr-2 text-lg"></i> Zeile hinzufügen
+                    <i class="fas fa-plus mr-2 text-lg"></i> Zeile hinzufuegen
                 </button>
                 <button id="add-key-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg flex items-center text-base">
-                    <i class="fas fa-key mr-2 text-lg"></i> Schlüsselgruppe hinzufügen
+                    <i class="fas fa-key mr-2 text-lg"></i> Schluesselgruppe hinzufuegen
+                </button>
+                <button id="open-customer-form-btn" class="bg-[#203d5d] hover:bg-[#1a344f] text-white font-bold py-3 px-6 rounded-lg flex items-center text-base">
+                    <i class="fas fa-save mr-2 text-lg"></i> Schliessplan speichern
                 </button>
             </div>
             
             <!-- Speichern Button für angemeldete Benutzer -->
             <div id="save-to-profile-container" class="mt-6 hidden">
-                <button id="save-to-profile-btn" class="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200">
+                <button id="save-to-profile-btn" class="w-full bg-[#203d5d] hover:bg-[#1a344f] text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200">
                     <i class="fas fa-save text-xl"></i>
                     <span class="text-lg">Schließplan ins Profil speichern</span>
                 </button>
@@ -253,7 +326,7 @@
                     <button id="modal-cancel-btn-bottom" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-6 rounded-xl transition-colors">
                         Abbrechen
                     </button>
-                    <button id="modal-save-btn" class="flex-1 bg-[#1a3d5c] hover:bg-[#143149] text-white font-semibold py-3 px-6 rounded-xl transition-colors">
+                    <button id="modal-save-btn" class="flex-1 bg-[#203d5d] hover:bg-[#1a344f] text-white font-semibold py-3 px-6 rounded-xl transition-colors">
                         Speichern
                     </button>
                 </div>
@@ -273,10 +346,10 @@
                         Sie sind nicht angemeldet. Melden Sie sich an, um Ihre Schließpläne zu verwalten.
                     </p>
                     <div class="flex gap-2">
-                        <a href="/login" class="flex-1 bg-[#1a3d5c] hover:bg-[#143149] text-white font-semibold py-2 px-4 rounded-lg text-center transition-colors">
+                        <a href="login.html" class="flex-1 bg-[#203d5d] hover:bg-[#1a344f] text-white font-semibold py-2 px-4 rounded-lg text-center transition-colors">
                             <i class="fas fa-sign-in-alt mr-2"></i>Anmelden
                         </a>
-                        <a href="/register" class="flex-1 bg-white hover:bg-gray-50 text-[#1a3d5c] font-semibold py-2 px-4 rounded-lg text-center border-2 border-[#1a3d5c] transition-colors">
+                        <a href="index.html" class="flex-1 bg-white hover:bg-gray-50 text-[#203d5d] font-semibold py-2 px-4 rounded-lg text-center border-2 border-[#203d5d] transition-colors">
                             <i class="fas fa-user-plus mr-2"></i>Registrieren
                         </a>
                     </div>
@@ -361,7 +434,7 @@
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <script src="script.js?v=row-drag-20260526c"></script>
     <script>
         // Starte Konfigurator direkt ohne Auth-Screen
         document.addEventListener('DOMContentLoaded', () => {
@@ -376,11 +449,6 @@
                 // Neuer Konfigurator - Session-Daten löschen
                 sessionStorage.removeItem('startNewConfig');
                 localStorage.removeItem('lastSchliessplanSession');
-            }
-            
-            // Starte Anwendung
-            if (typeof startApplication === 'function') {
-                startApplication();
             }
         });
     </script>

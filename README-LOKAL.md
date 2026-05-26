@@ -42,7 +42,9 @@ php -S localhost:8000
 **Die Datei `index.html` NICHT direkt im Browser öffnen!**
 - ES Modules funktionieren nicht mit `file://` Protokoll
 - Supabase kann nicht geladen werden
-- Sie MÜSSEN einen lokalen Server verwenden!
+- **Strapi-API** (`/api/...`) wird von Browsern bei `file://` oft geblockt (CORS, `origin: null`)
+- `env-config.js` nutzt unter **http://localhost** automatisch **Strapi auf http://localhost:1337**; die Cloud-URL funktioniert nur mit einer echten Website-Origin (z. B. Netlify)
+- Sie MÜSSEN einen lokalen HTTP-Server verwenden (`start-local.bat` / Port 8000)
 
 ---
 

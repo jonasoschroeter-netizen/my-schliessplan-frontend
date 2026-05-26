@@ -1,0 +1,8 @@
+{
+  "name": "my-schliessplan-frontend",
+  "private": true,
+  "description": "Statisches Frontend — bitte per HTTP starten (nicht file:// öffnen).",
+  "scripts": {
+    "serve": "npx --yes serve@14 . -l 5174 -n"
+  }
+}

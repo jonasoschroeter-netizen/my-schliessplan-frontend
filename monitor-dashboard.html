@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Monitor - Schliessplan</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="style.css?v=lively-professional-20260526">
+    <script src="env-config.js?v=monitor-dashboard-20260526"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script>
+        var supabaseClient = null;
+        (function () {
+            var fallback = {
+                url: 'https://gffecqdaybyhhdfkkyqi.supabase.co',
+                anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmZmVjcWRheWJ5aGhkZmtreXFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDY5NDYsImV4cCI6MjA3NzA4Mjk0Nn0.7iZ5UY2mSepEAhtPKlQ71JdIzmsLGzgU3RvmEJxzln4',
+                mode: 'cloud-fallback'
+            };
+            var cfg = window.__SCHLIESSPLAN_SB__ || fallback;
+            if (!cfg.url || !cfg.anonKey) cfg = fallback;
+            window.__SCHLIESSPLAN_SB__ = cfg;
+
+            try {
+                var namespace = (typeof supabase !== 'undefined' && supabase) || window.supabase || window.Supabase;
+                if (namespace && typeof namespace.createClient === 'function') {
+                    supabaseClient = namespace.createClient(cfg.url, cfg.anonKey);
+                    window.supabaseClient = supabaseClient;
+                }
+            } catch (error) {
+                console.warn('Supabase Client im Monitor nicht initialisiert:', error);
+            }
+        })();
+    </script>
+</head>
+<body class="program-premium monitor-body min-h-screen">
+    <main class="monitor-shell app-shell">
+        <header class="monitor-hero">
+            <nav class="monitor-topnav" aria-label="Monitor Navigation">
+                <a href="start.html" title="Konfigurator starten"><i class="fas fa-sliders"></i><span>Konfigurator</span></a>
+                <a href="interaction-audit.html" title="Interaktions-Audit"><i class="fas fa-route"></i><span>Interaktions-Audit</span></a>
+                <a href="dashboard.html" title="Kunden-Dashboard"><i class="fas fa-table-columns"></i><span>Dashboard</span></a>
+                <a href="login.html" title="Login pruefen"><i class="fas fa-right-to-bracket"></i><span>Login</span></a>
+            </nav>
+
+            <div class="monitor-title-row">
+                <div>
+                    <p class="monitor-eyebrow">Live Operations</p>
+                    <h1>Schliessplan System Monitor</h1>
+                    <p class="monitor-subtitle">Frontend, Strapi, Supabase, Routen, Konfiguration, Testdaten und Verbindungswege in einem Kontrollzentrum.</p>
+                </div>
+                <div class="monitor-status-block">
+                    <span id="overall-status-pill" class="monitor-pill is-idle"><i class="fas fa-circle"></i> Bereit</span>
+                    <strong id="overall-score">--%</strong>
+                    <small>Gesamtzustand</small>
+                </div>
+            </div>
+
+            <section class="monitor-actions" aria-label="Monitor Aktionen">
+                <button id="run-all-btn" class="monitor-primary-btn" type="button"><i class="fas fa-bolt"></i><span>Alle Tests starten</span></button>
+                <button id="run-critical-btn" type="button"><i class="fas fa-shield-halved"></i><span>Kritische Tests</span></button>
+                <button id="toggle-auto-btn" type="button"><i class="fas fa-clock"></i><span>10-Minuten-Autotest</span></button>
+                <button id="create-test-data-btn" type="button"><i class="fas fa-flask"></i><span>Testdaten starten</span></button>
+                <button id="export-report-btn" type="button"><i class="fas fa-file-export"></i><span>Report exportieren</span></button>
+            </section>
+        </header>
+
+        <section class="monitor-kpi-grid" aria-label="System Kennzahlen">
+            <article>
+                <span>Letzte Pruefung</span>
+                <strong id="last-run-at">Noch nicht gestartet</strong>
+                <small id="last-run-duration">--</small>
+            </article>
+            <article>
+                <span>Naechster Autotest</span>
+                <strong id="next-run-at">Aus</strong>
+                <small id="auto-countdown">Intervall: 10 Minuten</small>
+            </article>
+            <article>
+                <span>Aktive Testpunkte</span>
+                <strong id="test-count">--</strong>
+                <small>Frontend / Backend / Supabase</small>
+            </article>
+            <article>
+                <span>Langsamster Kontakt</span>
+                <strong id="slowest-test">--</strong>
+                <small id="slowest-test-time">-- ms</small>
+            </article>
+        </section>
+
+        <section class="monitor-layout">
+            <aside class="monitor-left-panel">
+                <div class="monitor-panel-head">
+                    <h2>Systeme</h2>
+                    <button id="clear-history-btn" title="Historie loeschen" type="button"><i class="fas fa-trash"></i></button>
+                </div>
+                <div id="system-cards" class="monitor-system-list"></div>
+
+                <div class="monitor-testdata-panel">
+                    <h2>Testdaten-Sandbox</h2>
+                    <p>Erzeugt synthetische lokale Pruefdaten, ohne echte Kunden- oder Supabase-Daten zu veraendern.</p>
+                    <div id="test-data-preview" class="monitor-code-preview">Noch keine Testdaten erzeugt.</div>
+                    <div class="monitor-mini-actions">
+                        <button id="validate-test-data-btn" type="button"><i class="fas fa-check-double"></i><span>Validieren</span></button>
+                        <button id="clear-test-data-btn" type="button"><i class="fas fa-eraser"></i><span>Leeren</span></button>
+                    </div>
+                </div>
+            </aside>
+
+            <section class="monitor-main-panel">
+                <div class="monitor-panel-head">
+                    <div>
+                        <h2>Live Test Matrix</h2>
+                        <p id="monitor-run-note">Starte einen Testlauf oder aktiviere den 10-Minuten-Autotest.</p>
+                    </div>
+                    <div class="monitor-filter-tabs" role="tablist" aria-label="Testfilter">
+                        <button class="is-active" data-filter="all" type="button">Alle</button>
+                        <button data-filter="fail" type="button">Fehler</button>
+                        <button data-filter="warn" type="button">Warnungen</button>
+                        <button data-filter="critical" type="button">Kritisch</button>
+                    </div>
+                </div>
+
+                <div class="monitor-table-wrap">
+                    <table class="monitor-table">
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>System</th>
+                                <th>Testpunkt</th>
+                                <th>Antwort</th>
+                                <th>Dauer</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="test-results-body">
+                            <tr class="monitor-empty-row">
+                                <td colspan="6">Noch keine Ergebnisse. Klicke auf "Alle Tests starten".</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="monitor-bottom-grid">
+                    <section>
+                        <h2>Historie</h2>
+                        <div id="history-list" class="monitor-history-list"></div>
+                    </section>
+                    <section>
+                        <h2>Ereignislog</h2>
+                        <div id="event-log" class="monitor-event-log"></div>
+                    </section>
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <script src="monitor-dashboard.js?v=monitor-dashboard-20260526"></script>
+</body>
+</html>

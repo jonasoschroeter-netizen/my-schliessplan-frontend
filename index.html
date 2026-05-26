@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
@@ -7,191 +7,256 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
-    <!-- Supabase Client - wird über CDN Script geladen (robuster als ES Module) -->
+    <link rel="stylesheet" href="style.css?v=row-drag-20260526c">
+    <script src="env-config.js?v=contact-audit-20260525"></script>
+    <!-- Supabase Client - CDN (UMD) + Fallback-CDN + Debug -->
     <script>
-        // Supabase Credentials
-        const SUPABASE_URL = 'https://gffecqdaybyhhdfkkyqi.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmZmVjcWRheWJ5aGhkZmtreXFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDY5NDYsImV4cCI6MjA3NzA4Mjk0Nn0.7iZ5UY2mSepEAhtPKlQ71JdIzmsLGzgU3RvmEJxzln4';
-        
-        // Initialisiere Supabase nachdem das Script geladen ist
-        function initializeSupabaseClient(retryCount = 0) {
+        var SUPABASE_FALLBACK_URL = 'https://gffecqdaybyhhdfkkyqi.supabase.co';
+        var SUPABASE_FALLBACK_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmZmVjcWRheWJ5aGhkZmtreXFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDY5NDYsImV4cCI6MjA3NzA4Mjk0Nn0.7iZ5UY2mSepEAhtPKlQ71JdIzmsLGzgU3RvmEJxzln4';
+        var _sbCfg = window.__SCHLIESSPLAN_SB__ || {};
+        if (!_sbCfg.url || !_sbCfg.anonKey) {
+            _sbCfg = {
+                url: SUPABASE_FALLBACK_URL,
+                anonKey: SUPABASE_FALLBACK_ANON_KEY,
+                mode: 'cloud-fallback'
+            };
+            window.__SCHLIESSPLAN_SB__ = _sbCfg;
+        }
+        var SUPABASE_URL = _sbCfg.url;
+        var SUPABASE_ANON_KEY = _sbCfg.anonKey;
+
+        const SB_DEBUG = typeof location !== 'undefined' && new URLSearchParams(location.search).get('sbdebug') === '1';
+
+        window.__schliessplanSupabaseDebug = {
+            t0: Date.now(),
+            cdnAttempt: null,
+            cdnUrl: null,
+            scriptLoaded: false,
+            namespaceFound: false,
+            retries: 0,
+            hints: [],
+            lastError: null
+        };
+
+        function sbLog(msg, extra) {
+            if (SB_DEBUG) console.log('[sb]', msg, extra || '');
+        }
+
+        /** UMD kann window.supabase, default-Export oder ältere Globals nutzen */
+        function getSupabaseNamespace() {
+            const w = typeof window !== 'undefined' ? window : {};
+            const tryNs = function (ns) {
+                if (!ns) return null;
+                if (typeof ns.createClient === 'function') return ns;
+                if (ns.default && typeof ns.default.createClient === 'function') return ns.default;
+                return null;
+            };
+            return tryNs(w.supabase)
+                || tryNs(w.Supabase)
+                || (typeof supabase !== 'undefined' ? tryNs(supabase) : null);
+        }
+
+        const SUPABASE_CDN_URLS = [
+            'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js',
+            'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js'
+        ];
+
+        const MAX_LIBRARY_WAIT = 120;
+
+        function dispatchSupabaseError(message) {
+            window.__schliessplanSupabaseDebug.lastError = message;
+            window.dispatchEvent(new CustomEvent('supabase-error', {
+                detail: { message: message, debug: window.__schliessplanSupabaseDebug }
+            }));
+            if (SB_DEBUG && document.body) {
+                var pre = document.createElement('pre');
+                pre.id = 'sb-debug-panel';
+                pre.style.cssText = 'position:fixed;bottom:8px;left:8px;right:8px;max-height:45vh;overflow:auto;background:#1e1e1e;color:#fca5a5;padding:12px;font-size:11px;z-index:99999;border-radius:8px;white-space:pre-wrap;';
+                pre.textContent = 'sbdebug=1\n\n' + message + '\n\n' + JSON.stringify(window.__schliessplanSupabaseDebug, null, 2);
+                document.body.appendChild(pre);
+            }
+        }
+
+        function initializeSupabaseClient(retryCount) {
+            if (retryCount === undefined) retryCount = 0;
+            window.__schliessplanSupabaseDebug.retries = retryCount;
             try {
-                // Versuche verschiedene Zugriffswege auf das Supabase-Objekt
-                let supabaseObj = null;
-                
-                // Versuche 1: Über window.supabase (UMD Build macht es global verfügbar)
-                if (typeof window.supabase !== 'undefined' && window.supabase !== null) {
-                    supabaseObj = window.supabase;
-                }
-                // Versuche 2: Direkter Zugriff auf supabase (falls im Scope)
-                else if (typeof supabase !== 'undefined' && supabase !== null) {
-                    supabaseObj = supabase;
-                }
-                // Versuche 3: Über window.Supabase (fallback)
-                else if (typeof window.Supabase !== 'undefined' && window.Supabase !== null) {
-                    supabaseObj = window.Supabase;
-                }
-                
-                // Prüfe ob Objekt verfügbar ist und createClient hat
+                var supabaseObj = getSupabaseNamespace();
                 if (!supabaseObj || typeof supabaseObj.createClient !== 'function') {
-                    console.log('⏳ Supabase Library noch nicht geladen, warte...', retryCount, {
-                        windowSupabase: typeof window.supabase,
-                        supabase: typeof supabase,
-                        windowSupabaseValue: window.supabase
-                    });
-                    if (retryCount < 20) { // Max 20 Versuche (2 Sekunden)
-                        setTimeout(() => initializeSupabaseClient(retryCount + 1), 100);
+                    sbLog('namespace noch nicht da', { retryCount: retryCount, hasWindowSupabase: typeof window.supabase });
+                    if (retryCount < MAX_LIBRARY_WAIT) {
+                        setTimeout(function () { initializeSupabaseClient(retryCount + 1); }, 100);
                     } else {
-                        console.error('❌ Supabase Library konnte nicht geladen werden (zu viele Versuche)');
-                        window.dispatchEvent(new CustomEvent('supabase-error', { 
-                            detail: { message: 'Supabase Library konnte nicht geladen werden' } 
-                        }));
+                        window.__schliessplanSupabaseDebug.hints.push(
+                            'Nach ' + MAX_LIBRARY_WAIT + ' Versuchen kein createClient. Häufig: CDN blockiert (Firewall/AdBlock), offline, oder Seite per file:// mit blockiertem Netz.'
+                        );
+                        dispatchSupabaseError('Supabase Library konnte nicht geladen werden');
                     }
                     return false;
                 }
-                
-                // Supabase Client erstellen und global verfügbar machen
+
+                window.__schliessplanSupabaseDebug.namespaceFound = true;
                 window.supabaseClient = supabaseObj.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                
-                // Prüfe ob Client erfolgreich erstellt wurde
                 if (!window.supabaseClient) {
                     throw new Error('Supabase Client wurde nicht erstellt (null)');
                 }
-                
                 console.log('✅ Supabase Client erfolgreich initialisiert');
-                
-                // Trigger event für script.js
                 window.dispatchEvent(new CustomEvent('supabase-ready'));
                 return true;
             } catch (error) {
                 console.error('❌ Fehler beim Initialisieren von Supabase:', error);
-                console.error('🔍 Debug Info:', {
-                    supabaseType: typeof supabase,
-                    supabaseValue: supabase,
-                    createClientType: typeof (supabase?.createClient),
-                    retryCount: retryCount
-                });
-                
-                // Versuche es nochmal wenn noch Versuche übrig sind
-                if (retryCount < 5) {
-                    console.log(`🔄 Versuche erneut (${retryCount + 1}/5)...`);
-                    setTimeout(() => initializeSupabaseClient(retryCount + 1), 300);
+                if (retryCount < 8) {
+                    setTimeout(function () { initializeSupabaseClient(retryCount + 1); }, 300);
                     return false;
                 }
-                
-                console.warn('⚠️ Seite funktioniert weiterhin, aber Speichern wird nicht funktionieren');
                 window.supabaseClient = null;
-                // Sende auch ein Error-Event
-                window.dispatchEvent(new CustomEvent('supabase-error', { 
-                    detail: { message: error.message || 'Unbekannter Fehler beim Initialisieren' } 
-                }));
+                dispatchSupabaseError(error.message || 'Unbekannter Fehler beim Initialisieren');
                 return false;
             }
         }
-        
-        // Prüfe ob Supabase bereits geladen wurde (z.B. bei Seiten-Reload)
+
         function checkExistingSupabase() {
-            // Prüfe verschiedene mögliche globale Variablen
-            const supabaseObj = window.supabase || window.Supabase || (typeof supabase !== 'undefined' ? supabase : null);
-            
-            if (supabaseObj && typeof supabaseObj.createClient === 'function') {
+            if (getSupabaseNamespace()) {
                 console.log('✅ Supabase bereits verfügbar, initialisiere Client...');
                 return initializeSupabaseClient(0);
             }
-            
             return false;
         }
-        
-        // Versuche zuerst, ob Supabase bereits vorhanden ist
-        if (!checkExistingSupabase()) {
-            // Lade Supabase Script und initialisiere danach
-            const supabaseScript = document.createElement('script');
-            supabaseScript.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
+
+        function loadSupabaseFromCdn(index) {
+            if (index >= SUPABASE_CDN_URLS.length) {
+                window.__schliessplanSupabaseDebug.hints.push('Alle CDN-URLs fehlgeschlagen (Netzwerk oder Blocker).');
+                dispatchSupabaseError('Supabase Script konnte nicht geladen werden (alle CDNs)');
+                return;
+            }
+            var prev = document.getElementById('supabase-cdn-loader');
+            if (prev) prev.remove();
+
+            window.__schliessplanSupabaseDebug.cdnAttempt = index;
+            window.__schliessplanSupabaseDebug.cdnUrl = SUPABASE_CDN_URLS[index];
+
+            var supabaseScript = document.createElement('script');
+            supabaseScript.id = 'supabase-cdn-loader';
+            supabaseScript.src = SUPABASE_CDN_URLS[index];
             supabaseScript.async = true;
-            supabaseScript.id = 'supabase-script';
-            
-            // Verhindere doppeltes Laden
-            if (document.getElementById('supabase-script')) {
-                console.log('📦 Supabase Script bereits im DOM, warte auf Laden...');
-                setTimeout(() => {
-                    if (!checkExistingSupabase()) {
-                        initializeSupabaseClient(0);
+
+            supabaseScript.onload = function () {
+                window.__schliessplanSupabaseDebug.scriptLoaded = true;
+                sbLog('script onload', SUPABASE_CDN_URLS[index]);
+                setTimeout(function () {
+                    if (!initializeSupabaseClient(0)) {
+                        sbLog('init queued retries');
                     }
+                }, 50);
+            };
+
+            supabaseScript.onerror = function () {
+                window.__schliessplanSupabaseDebug.hints.push('CDN-Fehler: ' + SUPABASE_CDN_URLS[index]);
+                console.error('❌ Supabase CDN fehlgeschlagen:', SUPABASE_CDN_URLS[index]);
+                loadSupabaseFromCdn(index + 1);
+            };
+
+            document.head.appendChild(supabaseScript);
+        }
+
+        if (!checkExistingSupabase()) {
+            if (document.getElementById('supabase-cdn-loader')) {
+                setTimeout(function () {
+                    if (!window.supabaseClient) checkExistingSupabase() || initializeSupabaseClient(0);
                 }, 500);
             } else {
-                supabaseScript.onload = function() {
-                    console.log('📦 Supabase Script geladen, prüfe Verfügbarkeit...');
-                    // Warte etwas länger, damit Supabase vollständig initialisiert ist
-                    setTimeout(() => {
-                        // Prüfe verschiedene globale Variablen
-                        const supabaseObj = window.supabase || window.Supabase || (typeof supabase !== 'undefined' ? supabase : null);
-                        
-                        console.log('🔍 Prüfe Supabase-Objekt:', {
-                            windowSupabase: typeof window.supabase,
-                            windowSupabaseValue: window.supabase,
-                            globalSupabase: typeof supabase,
-                            globalSupabaseValue: supabase,
-                            hasCreateClient: typeof (supabaseObj?.createClient) === 'function'
-                        });
-                        
-                        // Setze supabase global falls über window verfügbar
-                        if (window.supabase && typeof window.supabase.createClient === 'function') {
-                            window.supabaseGlobal = window.supabase;
-                        }
-                        
-                        // Initialisiere mit mehr Wartezeit
-                        if (!initializeSupabaseClient(0)) {
-                            console.log('⏳ Initialisierung läuft im Hintergrund...');
-                        }
-                    }, 300);
-                };
-                
-                supabaseScript.onerror = function() {
-                    console.error('❌ Fehler beim Laden des Supabase Scripts');
-                    window.dispatchEvent(new CustomEvent('supabase-error', { 
-                        detail: { message: 'Supabase Script konnte nicht geladen werden' } 
-                    }));
-                };
-                
-                // Füge Script zum Head hinzu
-                document.head.appendChild(supabaseScript);
+                loadSupabaseFromCdn(0);
             }
         }
-        
-        // Fallback: Versuche auch später nochmal (falls bereits geladen oder nachdem Script fertig ist)
-        setTimeout(() => {
+
+        setTimeout(function () {
             if (!window.supabaseClient) {
                 console.log('🔄 Fallback: Versuche Supabase-Initialisierung erneut...');
                 checkExistingSupabase() || initializeSupabaseClient(0);
             }
-        }, 1000);
+        }, 1500);
     </script>
 </head>
-<body class="flex items-center justify-center min-h-screen p-4">
+<body class="program-premium min-h-dvh bg-gray-100 p-2 sm:p-3 box-border">
     <!-- Loading Screen -->
-    <div id="loading-screen" class="fixed inset-0 bg-white z-50 flex items-center justify-center">
-        <div class="w-full max-w-2xl mx-auto p-8">
-            <div class="text-center mb-8">
-                <h2 class="text-3xl font-bold text-gray-800 mb-2">Lade Schließplan Generator</h2>
-                <p class="text-gray-600">Bitte warten Sie, während wir alle Komponenten initialisieren...</p>
-            </div>
-            
-            <!-- Progress Bar -->
-            <div class="mb-8">
-                <div class="w-full bg-gray-200 rounded-full h-4 mb-2">
-                    <div id="loading-progress-bar" class="bg-[#1a3d5c] h-4 rounded-full transition-all duration-300" style="width: 0%"></div>
-                </div>
-                <div class="text-center">
-                    <span id="loading-progress-text" class="text-sm font-semibold text-gray-700">0%</span>
-                </div>
-            </div>
-            
-            <!-- Status Items -->
-            <div id="loading-status-items" class="space-y-3">
-                <!-- Status items werden dynamisch eingefügt -->
-            </div>
+    <div id="loading-screen" class="fixed inset-0 z-50 intro-film" aria-live="polite">
+        <div class="intro-backdrop" aria-hidden="true">
+            <div class="intro-grid"></div>
+            <div class="intro-scan"></div>
+            <div class="intro-shutter intro-shutter-top"></div>
+            <div class="intro-shutter intro-shutter-bottom"></div>
         </div>
+
+        <section class="intro-shell" aria-label="Schliessplan Generator wird geladen">
+            <div class="intro-stage" aria-hidden="true">
+                <div class="intro-film-strip">
+                    <span>Objektanalyse</span>
+                    <span>Tueren</span>
+                    <span>Funktionen</span>
+                    <span>Zylinder</span>
+                    <span>Matrix</span>
+                    <span>Schliessplan</span>
+                </div>
+
+                <div class="intro-blueprint">
+                    <div class="intro-route intro-route-a"></div>
+                    <div class="intro-route intro-route-b"></div>
+                    <div class="intro-route intro-route-c"></div>
+                    <div class="intro-data-node intro-data-node-a"></div>
+                    <div class="intro-data-node intro-data-node-b"></div>
+                    <div class="intro-data-node intro-data-node-c"></div>
+
+                    <div class="intro-door-frame">
+                        <div class="intro-door"></div>
+                        <div class="intro-door-glow"></div>
+                        <div class="intro-cylinder"></div>
+                    </div>
+
+                    <div class="intro-key">
+                        <span class="intro-key-head"></span>
+                        <span class="intro-key-core"></span>
+                        <span class="intro-key-shaft"></span>
+                        <span class="intro-key-bit intro-key-bit-a"></span>
+                        <span class="intro-key-bit intro-key-bit-b"></span>
+                    </div>
+                </div>
+
+                <div class="intro-title-reveal">
+                    <span>Analyse</span>
+                    <span>Zylinder</span>
+                    <span>Matrix</span>
+                    <span>Schliessplan</span>
+                </div>
+            </div>
+
+            <div class="intro-panel">
+                <div class="intro-brand-row">
+                    <div class="intro-mark" aria-hidden="true">
+                        <i class="fas fa-key"></i>
+                    </div>
+                    <div>
+                        <p class="intro-kicker">Live-Konfiguration</p>
+                        <h2>Schlie&szlig;plan Generator</h2>
+                    </div>
+                </div>
+                <p class="intro-copy">Objekt, T&uuml;ren, Funktionen und Zylinder-Systeme werden zu einer belastbaren Schlie&szlig;matrix verdichtet.</p>
+
+                <div class="intro-progress-wrap">
+                    <div class="intro-progress-track" aria-hidden="true">
+                        <div id="loading-progress-bar" class="intro-progress-bar" style="width: 0%"></div>
+                    </div>
+                    <span id="loading-progress-text" class="intro-progress-text">0%</span>
+                </div>
+
+                <div class="intro-status-frame">
+                    <div id="loading-status-items" class="space-y-3">
+                        <!-- Status items werden dynamisch eingefuegt -->
+                    </div>
+                </div>
+
+                <button type="button" id="intro-skip-btn" class="intro-skip-btn">Film reduzieren</button>
+            </div>
+        </section>
     </div>
 
     <!-- Auth Selection Screen -->
@@ -201,7 +266,7 @@
                 <!-- Logo & Welcome -->
                 <div class="text-center mb-8">
                     <div class="flex justify-center mb-4">
-                        <div class="w-16 h-16 bg-[#1a3d5c] rounded-full flex items-center justify-center">
+                        <div class="w-16 h-16 bg-[#203d5d] rounded-full flex items-center justify-center">
                             <i class="fas fa-key text-white text-2xl"></i>
                         </div>
                     </div>
@@ -212,13 +277,13 @@
                 <!-- Options -->
                 <div class="space-y-4">
                     <!-- Registrieren -->
-                    <button id="auth-register-btn" class="w-full bg-[#1a3d5c] hover:bg-[#143149] text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+                    <button id="auth-register-btn" class="w-full bg-[#203d5d] hover:bg-[#1a344f] text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
                         <i class="fas fa-user-plus text-xl"></i>
                         <span class="text-lg">Registrieren</span>
                     </button>
 
                     <!-- Einloggen -->
-                    <button id="auth-login-btn" class="w-full bg-white hover:bg-gray-50 text-[#1a3d5c] font-semibold py-4 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-3 border-2 border-[#1a3d5c] shadow-md hover:shadow-lg transform hover:-translate-y-0.5">
+                    <button id="auth-login-btn" class="w-full bg-white hover:bg-gray-50 text-[#203d5d] font-semibold py-4 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-3 border-2 border-[#203d5d] shadow-md hover:shadow-lg transform hover:-translate-y-0.5">
                         <i class="fas fa-sign-in-alt text-xl"></i>
                         <span class="text-lg">Einloggen</span>
                     </button>
@@ -292,7 +357,7 @@
                     <button type="button" id="register-cancel-btn" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-6 rounded-xl transition-colors">
                         Abbrechen
                     </button>
-                    <button type="submit" id="register-submit-btn" class="flex-1 bg-[#1a3d5c] hover:bg-[#143149] text-white font-semibold py-3 px-6 rounded-xl transition-colors flex items-center justify-center gap-2">
+                    <button type="submit" id="register-submit-btn" class="flex-1 bg-[#203d5d] hover:bg-[#1a344f] text-white font-semibold py-3 px-6 rounded-xl transition-colors flex items-center justify-center gap-2">
                         <i class="fas fa-user-plus"></i>
                         <span>Registrieren</span>
                     </button>
@@ -332,7 +397,7 @@
                     <button type="button" id="login-cancel-btn" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-6 rounded-xl transition-colors">
                         Abbrechen
                     </button>
-                    <button type="submit" id="login-submit-btn" class="flex-1 bg-[#1a3d5c] hover:bg-[#143149] text-white font-semibold py-3 px-6 rounded-xl transition-colors flex items-center justify-center gap-2">
+                    <button type="submit" id="login-submit-btn" class="flex-1 bg-[#203d5d] hover:bg-[#1a344f] text-white font-semibold py-3 px-6 rounded-xl transition-colors flex items-center justify-center gap-2">
                         <i class="fas fa-sign-in-alt"></i>
                         <span>Einloggen</span>
                     </button>
@@ -341,59 +406,80 @@
         </div>
     </div>
     
-    <!-- Main Content -->
-    <div class="w-full max-w-[90vw] mx-auto bg-white rounded-2xl shadow-xl p-8 md:p-12 relative" style="aspect-ratio: 16/9; max-height: 90vh;">
+    <!-- Main Content: volle nutzbare Höhe, Inhalt scrollt im mittleren Bereich -->
+    <div id="main-app-card" class="app-shell w-full max-w-[min(1200px,calc(100vw-1rem))] mx-auto flex flex-col bg-white rounded-2xl shadow-xl h-[calc(100dvh-1rem)] min-h-0 overflow-hidden">
 
-        <div class="flex items-center justify-between mb-4">
-            <div id="logo" class="flex items-center">
-                <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiBmaWxsPSIjN0NBQ0YwIi8+Cjx0ZXh0IHg9IjE2IiB5PSIyMCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0IiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+TDwvdGV4dD4KPC9zdmc+" alt="Firmenlogo" class="h-8 w-auto">
+        <div class="flex flex-col flex-1 min-h-0 gap-1 px-5 pb-5 pt-3 sm:px-6 sm:pb-6 sm:pt-4 md:px-8 md:pb-8 lg:px-10 lg:pb-10">
+
+        <!-- Kopfzeile: 1fr | auto | 1fr — obere Texte echt mittig wie der Fragentext darunter; links Logo, rechts Konto -->
+        <div class="mb-2 grid shrink-0 grid-cols-[1fr_auto_1fr] items-start gap-x-2 gap-y-2 sm:gap-x-4">
+            <div id="logo" class="flex justify-self-start">
+                <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiBmaWxsPSIjN0NBQ0YwIi8+Cjx0ZXh0IHg9IjE2IiB5PSIyMCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0IiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+TDwvdGV4dD4KPC9zdmc+" alt="Firmenlogo" class="h-24 w-24 object-contain">
             </div>
-            
-            <!-- User Icon (nur sichtbar wenn eingeloggt) -->
-            <div id="user-menu-container" class="hidden relative">
-                <button id="user-menu-btn" class="flex items-center justify-center w-10 h-10 rounded-full bg-gray-200 hover:bg-gray-300 transition-colors cursor-pointer">
-                    <i class="fas fa-user text-gray-600 text-lg"></i>
-                </button>
-                
-                <!-- Dropdown Menu -->
-                <div id="user-menu-dropdown" class="hidden absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                    <div class="p-4 border-b border-gray-200">
-                        <p class="text-sm font-semibold text-gray-800" id="user-menu-name">Benutzer</p>
-                        <p class="text-xs text-gray-500 mt-1" id="user-menu-email">email@example.com</p>
+
+            <div class="min-w-0 max-w-3xl justify-self-center px-1 text-center sm:px-2">
+                <h1 class="mb-1 text-2xl font-bold text-gray-800 sm:text-3xl">Ihr Weg zum perfekten Schließplan</h1>
+                <p id="questionnaire-subtitle" class="mb-3 text-gray-500 sm:mb-4">Schritt für Schritt zu Ihrer individuellen Schließanlage.</p>
+                <div class="mx-auto mb-0 w-full min-w-[12rem] max-w-3xl bg-gray-200 rounded-full h-2.5">
+                    <div id="progress-bar" class="bg-[#203d5d] h-2.5 rounded-full progress-bar-fill" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <div class="flex justify-self-end justify-end gap-2">
+                <!-- Gast: ein Avatar-Button, Klick öffnet Anmelde-Menü (sichtbar wenn nicht eingeloggt) -->
+                <div id="header-auth-actions" class="relative shrink-0">
+                    <button type="button" id="header-auth-menu-btn" class="flex h-[2.8125rem] w-[2.8125rem] items-center justify-center rounded-full bg-[#203d5d] text-white shadow-md transition-colors hover:bg-[#1a344f] focus:outline-none focus:ring-2 focus:ring-[#203d5d]/35" aria-label="Anmeldung und Registrierung" aria-haspopup="true" aria-expanded="false">
+                        <svg class="h-[1.5625rem] w-[1.5625rem]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                        </svg>
+                    </button>
+                    <div id="header-auth-dropdown" class="absolute right-0 top-full z-[60] mt-2 hidden w-56 rounded-lg border border-gray-200 bg-white py-1 shadow-lg" role="menu">
+                        <a href="login.html" class="block px-4 py-2.5 text-sm font-semibold text-[#203d5d] hover:bg-gray-50" role="menuitem">Anmelden</a>
+                        <button type="button" id="header-open-login-modal-btn" class="w-full px-4 py-2.5 text-left text-sm text-gray-800 hover:bg-gray-50" role="menuitem">Schnell einloggen</button>
+                        <button type="button" id="header-open-register-modal-btn" class="w-full px-4 py-2.5 text-left text-sm text-gray-800 hover:bg-gray-50" role="menuitem">Registrieren</button>
                     </div>
-                    <div class="py-2">
-                        <button id="user-profile-btn" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
-                            <i class="fas fa-user-circle mr-2"></i>
-                            Profil anzeigen
-                        </button>
-                        <button id="user-logout-btn" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors">
-                            <i class="fas fa-sign-out-alt mr-2"></i>
-                            Abmelden
-                        </button>
+                </div>
+
+                <!-- User Icon (nur sichtbar wenn eingeloggt) -->
+                <div id="user-menu-container" class="relative hidden">
+                    <button id="user-menu-btn" class="flex h-[2.8125rem] w-[2.8125rem] cursor-pointer items-center justify-center rounded-full bg-gray-200 transition-colors hover:bg-gray-300">
+                        <i class="fas fa-user text-lg text-gray-600"></i>
+                    </button>
+
+                    <div id="user-menu-dropdown" class="absolute right-0 top-full z-50 mt-2 hidden w-64 rounded-lg border border-gray-200 bg-white shadow-lg">
+                        <div class="border-b border-gray-200 p-4">
+                            <p class="text-sm font-semibold text-gray-800" id="user-menu-name">Benutzer</p>
+                            <p class="mt-1 text-xs text-gray-500" id="user-menu-email">email@example.com</p>
+                        </div>
+                        <div class="py-2">
+                            <button id="user-profile-btn" class="w-full px-4 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100">
+                                <i class="fas fa-user-circle mr-2"></i>
+                                Profil anzeigen
+                            </button>
+                            <button id="user-logout-btn" class="w-full px-4 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-50">
+                                <i class="fas fa-sign-out-alt mr-2"></i>
+                                Abmelden
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div id="questionnaire-container">
-            <h1 class="text-3xl font-bold text-center text-gray-800 mb-2">Ihr Weg zum perfekten Schließplan</h1>
-            <p id="questionnaire-subtitle" class="text-center text-gray-500 mb-8">Schritt für Schritt zu Ihrer individuellen Schließanlage.</p>
-            <div class="w-full bg-gray-200 rounded-full h-2.5 mb-8">
-                <div id="progress-bar" class="bg-[#1a3d5c] h-2.5 rounded-full progress-bar-fill" style="width: 0%"></div>
-            </div>
-            <!-- Container für Fragen und den neuen Zylinder-Assistenten -->
-            <div id="content-container"></div>
-            <div class="flex justify-between mt-8" id="navigation-buttons">
-                <button id="prev-btn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 px-8 rounded-lg transition-colors disabled:opacity-50 text-base">Zurück</button>
-                <button id="next-btn" class="bg-[#1a3d5c] hover:bg-[#143149] text-white font-bold py-3 px-8 rounded-lg transition-colors text-base">Weiter</button>
+        <div id="questionnaire-container" class="flex min-h-0 flex-1 flex-col justify-start">
+            <!-- Scrollbar nur hier: Fragen / Zylinder-Assistent -->
+            <div id="content-container" class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain py-1 pl-0 pr-0.5 pt-2 text-center"></div>
+            <div class="mt-4 flex shrink-0 justify-between gap-3 border-t border-gray-100 pt-4" id="navigation-buttons">
+                <button id="prev-btn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 px-6 sm:px-8 rounded-lg transition-colors disabled:opacity-50 text-base">Zurück</button>
+                <button id="next-btn" class="bg-[#203d5d] hover:bg-[#1a344f] text-white font-bold py-3 px-6 sm:px-8 rounded-lg transition-colors text-base">Weiter</button>
             </div>
         </div>
 
-        <div id="schliessplan-container" class="hidden">
+        <div id="schliessplan-container" class="hidden flex flex-col flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
             <div class="flex justify-between items-center mb-4">
                 <h1 class="text-3xl font-bold text-gray-800">Ihr persönlicher Schließplan</h1>
                 <div class="flex gap-3">
-                    <button id="export-html-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg flex items-center transition-colors text-base">
+                    <button id="export-html-btn" class="bg-[#203d5d] hover:bg-[#1a344f] text-white font-bold py-3 px-6 rounded-lg flex items-center transition-colors text-base">
                         <i class="fas fa-file-code mr-2 text-lg"></i> Als HTML exportieren
                     </button>
                     <button id="back-to-questions-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 px-6 rounded-lg flex items-center text-base"><i class="fas fa-pencil-alt mr-2 text-lg"></i> Konfiguration bearbeiten</button>
@@ -404,15 +490,17 @@
                 <div class="flex items-center gap-2"><div class="w-4 h-4 bg-white border"></div><span>Mechanisch</span></div>
                 <div class="flex items-center gap-2"><div class="w-4 h-4" style="background-color: #e0f2fe;"></div><span>Elektronisch</span></div>
             </div>
-            <div class="overflow-x-auto">
+            <!-- overflow + flex: min-height sonst 0 → Tabelle „verschwindet“ (siehe flex item min-size) -->
+            <div class="w-full min-h-min shrink-0 overflow-x-auto">
                 <table class="w-full border-collapse schliessplan-table">
                     <thead>
                         <tr>
-                            <th colspan="8" class="schliessplan-header-main">Schließzylinder</th>
+                            <th colspan="9" class="schliessplan-header-main">Schließzylinder</th>
                             <td class="border-none bg-gray-100"></td>
                             <th id="schluessel-header-main" colspan="2" class="schliessplan-header-main">Schlüsselmatrix</th>
                         </tr>
                         <tr>
+                            <th class="schliessplan-header-sub row-drag-header" aria-label="Zeilen verschieben"></th>
                             <th class="schliessplan-header-sub">POS</th>
                             <th class="schliessplan-header-sub">Türbezeichnung</th>
                             <th class="schliessplan-header-sub">Zylindertyp</th>
@@ -434,15 +522,16 @@
             </div>
             <div class="flex justify-between mt-6">
                 <div><button id="add-row-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg flex items-center text-base"><i class="fas fa-plus mr-2 text-lg"></i> Zeile hinzufügen</button></div>
-                <div><button id="add-key-btn" class="bg-[#2a95c3] hover:bg-[#22779a] text-white font-bold py-3 px-6 rounded-lg flex items-center text-base"><i class="fas fa-key mr-2 text-lg"></i> Schlüsselgruppe hinzufügen</button></div>
+                <div><button id="add-key-btn" class="bg-[#203d5d] hover:bg-[#1a344f] text-white font-bold py-3 px-6 rounded-lg flex items-center text-base"><i class="fas fa-key mr-2 text-lg"></i> Schlüsselgruppe hinzufügen</button></div>
             </div>
             
             <!-- Speichern Button für angemeldete Benutzer -->
             <div id="save-to-profile-container" class="mt-6 hidden">
-                <button id="save-to-profile-btn" class="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200">
+                <button id="save-to-profile-btn" class="w-full bg-[#203d5d] hover:bg-[#1a344f] text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200">
                     <i class="fas fa-save text-xl"></i>
                     <span class="text-lg">Schließplan ins Profil speichern</span>
                 </button>
+                <div id="autosave-status" class="mt-2 text-center text-sm text-gray-500"></div>
             </div>
 
             <!-- Kunden-Daten Formular -->
@@ -459,12 +548,12 @@
                         Sie sind nicht angemeldet. Melden Sie sich an, um Ihre Schließpläne zu verwalten.
                     </p>
                     <div class="flex gap-2">
-                        <a href="/login" class="flex-1 bg-[#1a3d5c] hover:bg-[#143149] text-white font-semibold py-2 px-4 rounded-lg text-center transition-colors">
+                        <a href="login.html" class="flex-1 bg-[#203d5d] hover:bg-[#1a344f] text-white font-semibold py-2 px-4 rounded-lg text-center transition-colors">
                             <i class="fas fa-sign-in-alt mr-2"></i>Anmelden
                         </a>
-                        <a href="/register" class="flex-1 bg-white hover:bg-gray-50 text-[#1a3d5c] font-semibold py-2 px-4 rounded-lg text-center border-2 border-[#1a3d5c] transition-colors">
+                        <button type="button" id="customer-open-register-btn" class="flex-1 bg-white hover:bg-gray-50 text-[#203d5d] font-semibold py-2 px-4 rounded-lg text-center border-2 border-[#203d5d] transition-colors">
                             <i class="fas fa-user-plus mr-2"></i>Registrieren
-                        </a>
+                        </button>
                     </div>
                     <div class="mt-3 pt-3 border-t border-blue-200">
                         <p class="text-xs text-gray-600 text-center">Oder speichern Sie als Gast (ohne Konto)</p>
@@ -511,9 +600,10 @@
                 </div>
                 <div class="flex justify-end mt-8 gap-4">
                     <button id="modal-cancel-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-6 rounded-lg">Abbrechen</button>
-                    <button id="modal-save-btn" class="bg-[#1a3d5c] hover:bg-[#143149] text-white font-bold py-2 px-6 rounded-lg">Speichern</button>
+                    <button id="modal-save-btn" class="bg-[#203d5d] hover:bg-[#1a344f] text-white font-bold py-2 px-6 rounded-lg">Speichern</button>
                 </div>
             </div>
+        </div>
         </div>
     </div>
 
@@ -584,6 +674,7 @@
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <!-- Strapi-URL: window.__SCHLIESSPLAN_STRAPI_URL__ in env-config.js (lokal vs. Cloud) -->
+    <script src="script.js?v=row-drag-20260526c"></script>
 </body>
 </html>

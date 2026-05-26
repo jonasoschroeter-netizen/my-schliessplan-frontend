@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interaktions-Audit - Schliessplan</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="style.css?v=lively-professional-20260526">
+    <script src="env-config.js?v=interaction-audit-20260526"></script>
+</head>
+<body class="program-premium qa-body min-h-screen">
+    <main class="qa-shell app-shell">
+        <header class="qa-hero">
+            <nav class="monitor-topnav qa-topnav" aria-label="QA Navigation">
+                <a href="monitor-dashboard.html"><i class="fas fa-heart-pulse"></i><span>System Monitor</span></a>
+                <a href="start.html"><i class="fas fa-sliders"></i><span>Konfigurator</span></a>
+                <a href="dashboard.html"><i class="fas fa-table-columns"></i><span>Dashboard</span></a>
+            </nav>
+            <div class="qa-title-grid">
+                <div>
+                    <p class="monitor-eyebrow">Button Matrix Scraper</p>
+                    <h1>Interaktions-Audit</h1>
+                    <p>Testet Button- und Optionspfade im Schliessplan-Konfigurator, sammelt Fehler und erstellt einen Analyse-Report.</p>
+                </div>
+                <div class="qa-score-card">
+                    <span id="qa-status-pill" class="monitor-pill is-idle"><i class="fas fa-circle"></i> Bereit</span>
+                    <strong id="qa-score">--%</strong>
+                    <small id="qa-score-label">Noch kein Lauf</small>
+                </div>
+            </div>
+        </header>
+
+        <section class="qa-control-grid">
+            <label>
+                <span>Testmodus</span>
+                <select id="qa-mode">
+                    <option value="smoke">Smoke: schneller Sicherheitslauf</option>
+                    <option value="pairwise" selected>Breit: Kombinationen + Paarabdeckung</option>
+                    <option value="exhaustive">Exhaustiv bis Limit</option>
+                </select>
+            </label>
+            <label>
+                <span>Max. Pfade</span>
+                <input id="qa-max-paths" type="number" min="1" max="5000" value="160">
+            </label>
+            <label>
+                <span>Optionen je Frage</span>
+                <input id="qa-option-cap" type="number" min="1" max="50" value="6">
+            </label>
+            <label>
+                <span>Klick-Pause ms</span>
+                <input id="qa-delay" type="number" min="80" max="3000" value="260">
+            </label>
+            <label class="qa-check">
+                <input id="qa-plan-actions" type="checkbox" checked>
+                <span>Plan-Buttons pruefen</span>
+            </label>
+            <label class="qa-check">
+                <input id="qa-stop-on-error" type="checkbox">
+                <span>Bei Fehler stoppen</span>
+            </label>
+        </section>
+
+        <section class="qa-actions">
+            <button id="qa-discover-btn" type="button"><i class="fas fa-magnifying-glass-chart"></i><span>Struktur scannen</span></button>
+            <button id="qa-run-btn" class="monitor-primary-btn" type="button"><i class="fas fa-route"></i><span>Matrix-Test starten</span></button>
+            <button id="qa-stop-btn" type="button" disabled><i class="fas fa-stop"></i><span>Stoppen</span></button>
+            <button id="qa-export-btn" type="button"><i class="fas fa-file-export"></i><span>Analyse exportieren</span></button>
+            <button id="qa-clear-btn" type="button"><i class="fas fa-eraser"></i><span>Leeren</span></button>
+        </section>
+
+        <section class="qa-kpis">
+            <article><span>Geplante Pfade</span><strong id="qa-planned">--</strong><small id="qa-coverage-note">Noch nicht berechnet</small></article>
+            <article><span>Getestet</span><strong id="qa-tested">0</strong><small id="qa-current-path">--</small></article>
+            <article><span>Fehler</span><strong id="qa-failures">0</strong><small id="qa-warnings">0 Warnungen</small></article>
+            <article><span>Dauer</span><strong id="qa-duration">--</strong><small id="qa-last-run">--</small></article>
+        </section>
+
+        <section class="qa-layout">
+            <aside class="qa-side-panel">
+                <div class="monitor-panel-head">
+                    <h2>Gescrapte Struktur</h2>
+                    <span id="qa-step-count" class="qa-mini-pill">0 Steps</span>
+                </div>
+                <div id="qa-discovery-list" class="qa-discovery-list">
+                    <p class="monitor-muted">Noch keine Struktur gescannt.</p>
+                </div>
+                <div class="qa-risk-panel">
+                    <h2>Analyse-Regeln</h2>
+                    <ul>
+                        <li>JavaScript-Fehler und Promise-Abbrueche</li>
+                        <li>Leere Screens / fehlende Optionen</li>
+                        <li>Nicht erreichbare Endzustands-Tabelle</li>
+                        <li>Horizontales Layout-Overflow</li>
+                        <li>Defekte Plan-Buttons nach Generierung</li>
+                        <li>Buttons ohne Text oder erreichbaren Namen</li>
+                    </ul>
+                </div>
+            </aside>
+
+            <section class="qa-main-panel">
+                <div class="monitor-panel-head">
+                    <div>
+                        <h2>Pfad-Ergebnisse</h2>
+                        <p id="qa-run-note">Scanne zuerst die Struktur oder starte direkt den Matrix-Test.</p>
+                    </div>
+                    <div class="monitor-filter-tabs qa-filter-tabs" role="tablist" aria-label="QA Filter">
+                        <button class="is-active" data-filter="all" type="button">Alle</button>
+                        <button data-filter="fail" type="button">Fehler</button>
+                        <button data-filter="warn" type="button">Warnungen</button>
+                        <button data-filter="pass" type="button">OK</button>
+                    </div>
+                </div>
+                <div class="qa-table-wrap">
+                    <table class="monitor-table qa-table">
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Pfad</th>
+                                <th>Kombination</th>
+                                <th>Endzustand</th>
+                                <th>Dauer</th>
+                                <th>Analyse</th>
+                            </tr>
+                        </thead>
+                        <tbody id="qa-results-body">
+                            <tr class="monitor-empty-row"><td colspan="6">Noch keine Pfade getestet.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="qa-bottom-grid">
+                    <section>
+                        <h2>Live Log</h2>
+                        <div id="qa-event-log" class="monitor-event-log"></div>
+                    </section>
+                    <section>
+                        <h2>Testframe</h2>
+                        <div class="qa-frame-shell">
+                            <iframe id="qa-frame" title="Schliessplan Testframe" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads"></iframe>
+                        </div>
+                    </section>
+                </div>
+            </section>
+        </section>
+    </main>
+    <script src="interaction-audit.js?v=qa-timeout-hardening-20260526"></script>
+</body>
+</html>

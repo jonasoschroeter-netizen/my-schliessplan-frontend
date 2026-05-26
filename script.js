@@ -4,9 +4,19 @@
 
 // --- DATA & CONFIGURATION ---
 const ZYLINDER_ARTEN = ["Doppelzylinder", "Halbzylinder", "Knaufzylinder", "Außenzylinder"];
+const DEFAULT_SCHLIESSPLAN_SYSTEM_OPTIONS = [
+    { id: "mechanisch", key: "mechanisch", name: "Mechanisch", color: "#2563eb", sortOrder: 10, isActive: true, techType: "mechanisch" },
+    { id: "elektronisch", key: "elektronisch", name: "Elektronisch", color: "#16a34a", sortOrder: 20, isActive: true, techType: "elektronisch" }
+];
+let schliessplanSystemOptions = DEFAULT_SCHLIESSPLAN_SYSTEM_OPTIONS.map(option => ({ ...option }));
+let draggedSchliessplanRowId = null;
+let activeSchliessplanPointerDrag = null;
 // ALL_FEATURES wird jetzt dynamisch aus dem Backend geladen
 let ALL_FEATURES = {};
-const STRAPI_BASE_URL = 'https://brave-basketball-98ec57b285.strapiapp.com'; // Strapi Cloud Backend
+/** Überschreiben: env-config.js setzt window.__SCHLIESSPLAN_STRAPI_URL__ (Standard: http://127.0.0.1:1337) */
+const STRAPI_BASE_URL =
+    (typeof window !== 'undefined' && window.__SCHLIESSPLAN_STRAPI_URL__) ||
+    'http://127.0.0.1:1337';
 
 // Netlify Production URL für E-Mail-Bestätigung
 const NETLIFY_URL = 'https://frontend-schlieplan.netlify.app';
@@ -14,11 +24,14 @@ const NETLIFY_URL = 'https://frontend-schlieplan.netlify.app';
 // Cache-Busting Konfiguration
 const CACHE_BUSTING = true; // Aktiviert Cache-Busting für alle API-Aufrufe
 
+/** false = Start ohne „Willkommen / Einloggen / Gast“-Auswahl (direkt in den Fragebogen) */
+const AUTH_SELECTION_SCREEN_ENABLED = false;
+
 // --- SUPABASE CONFIGURATION ---
 // Supabase Client wird in index.html als ES Module geladen und als window.supabaseClient verfügbar gemacht
 
-// Supabase Client Variable (wird vom ES Module in index.html gesetzt)
-let supabase = null;
+// Client-Instanz (NICHT "supabase" nennen — kollidiert mit globalem UMD-Namen window.supabase)
+let schliessplanSb = null;
 let supabaseInitialized = false;
 let supabaseReadyPromise = null;
 
@@ -31,21 +44,21 @@ function waitForSupabase() {
     supabaseReadyPromise = new Promise((resolve, reject) => {
         // Prüfe sofort ob bereits geladen
         if (typeof window.supabaseClient !== 'undefined' && window.supabaseClient !== null) {
-            supabase = window.supabaseClient;
+            schliessplanSb = window.supabaseClient;
             supabaseInitialized = true;
             console.log('✅ Supabase Client bereits geladen');
-            resolve(supabase);
+            resolve(schliessplanSb);
             return;
         }
         
         // Event Listener für supabase-ready Event
         const onReady = () => {
             if (typeof window.supabaseClient !== 'undefined' && window.supabaseClient !== null) {
-                supabase = window.supabaseClient;
+                schliessplanSb = window.supabaseClient;
                 supabaseInitialized = true;
                 console.log('✅ Supabase Client über Event initialisiert');
                 window.removeEventListener('supabase-ready', onReady);
-                resolve(supabase);
+                resolve(schliessplanSb);
             }
         };
         
@@ -60,6 +73,12 @@ function waitForSupabase() {
         const onError = (event) => {
             const errorMessage = event.detail?.message || 'Unbekannter Fehler';
             console.error('❌ Supabase Fehler-Event erhalten:', errorMessage);
+            if (event.detail?.debug) {
+                console.error('Supabase-Debug:', event.detail.debug);
+            }
+            if (typeof window.__schliessplanSupabaseDebug !== 'undefined') {
+                console.error('window.__schliessplanSupabaseDebug:', window.__schliessplanSupabaseDebug);
+            }
             window.removeEventListener('supabase-error', onError);
             window.removeEventListener('supabase-ready', onReady);
             if (checkInterval) clearInterval(checkInterval);
@@ -72,19 +91,19 @@ function waitForSupabase() {
         checkInterval = setInterval(() => {
             attempts++;
             if (typeof window.supabaseClient !== 'undefined' && window.supabaseClient !== null) {
-                supabase = window.supabaseClient;
+                schliessplanSb = window.supabaseClient;
                 supabaseInitialized = true;
                 console.log('✅ Supabase Client über Polling initialisiert');
                 window.removeEventListener('supabase-ready', onReady);
                 window.removeEventListener('supabase-error', onError);
                 clearInterval(checkInterval);
-                resolve(supabase);
+                resolve(schliessplanSb);
             } else if (attempts >= maxAttempts) {
                 console.error('❌ Supabase Client konnte nicht geladen werden (Timeout nach 15 Sekunden)');
                 console.error('🔍 Debug Info:', {
                     supabaseClientExists: typeof window.supabaseClient !== 'undefined',
                     supabaseClientValue: window.supabaseClient,
-                    supabaseLibraryExists: typeof supabase !== 'undefined'
+                    supabaseLibraryExists: typeof window.supabase !== 'undefined'
                 });
                 window.removeEventListener('supabase-ready', onReady);
                 window.removeEventListener('supabase-error', onError);
@@ -106,20 +125,20 @@ function initializeSupabase() {
         })
         .catch((error) => {
             console.error('❌ Fehler bei Supabase Initialisierung:', error);
-            supabase = null;
+            schliessplanSb = null;
             supabaseInitialized = false;
         });
 }
 
 // Hilfsfunktion: Stelle sicher, dass Supabase geladen ist
 async function ensureSupabaseReady() {
-    if (supabaseInitialized && supabase) {
-        return supabase;
+    if (supabaseInitialized && schliessplanSb) {
+        return schliessplanSb;
     }
     
     try {
         await waitForSupabase();
-        return supabase;
+        return schliessplanSb;
     } catch (error) {
         throw new Error('Supabase Client konnte nicht initialisiert werden. Bitte laden Sie die Seite neu.');
     }
@@ -130,6 +149,9 @@ const loadingStatus = {
     items: {},
     totalSteps: 0,
     completedSteps: 0,
+    readyToContinue: false,
+    doorUnlockStarted: false,
+    doorUnlockTimer: null,
     
     // Status-Items definieren
     init() {
@@ -147,6 +169,27 @@ const loadingStatus = {
         };
         this.totalSteps = Object.keys(this.items).length;
         this.completedSteps = 0;
+        this.readyToContinue = false;
+        this.doorUnlockStarted = false;
+        if (this.doorUnlockTimer) clearTimeout(this.doorUnlockTimer);
+        this.doorUnlockTimer = null;
+        const loadingScreen = document.getElementById('loading-screen');
+        if (loadingScreen) {
+            loadingScreen.classList.remove('intro-ready', 'intro-unlock-mode', 'intro-door-opened');
+            loadingScreen.removeAttribute('data-loading-complete');
+        }
+        const unlockHint = document.getElementById('intro-door-action-hint');
+        if (unlockHint) unlockHint.remove();
+        const readyNote = document.getElementById('intro-ready-note');
+        if (readyNote) readyNote.remove();
+        const skipButton = document.getElementById('intro-skip-btn');
+        if (skipButton) {
+            skipButton.textContent = 'Film reduzieren';
+            skipButton.dataset.ready = 'false';
+            skipButton.setAttribute('aria-pressed', 'false');
+            skipButton.classList.remove('intro-start-btn');
+            skipButton.disabled = false;
+        }
         this.renderStatusItems();
         // Progress Bar initial auf 0% setzen
         this.updateProgressBar();
@@ -240,26 +283,158 @@ const loadingStatus = {
     
     // Progress-Balken aktualisieren
     updateProgressBar() {
-        const percentage = Math.round((this.completedSteps / this.totalSteps) * 100);
+        const loadingCount = Object.values(this.items).filter(function (item) {
+            return item.status === 'loading';
+        }).length;
+        // Bisher zählten nur success/error — bei laufenden Requests blieb 0 %. Lade-Status fließt anteilig ein.
+        const loadingWeight = Math.min(loadingCount * 0.35, 3.5);
+        const raw = (this.completedSteps + loadingWeight) / this.totalSteps;
+        let percentage = Math.min(100, Math.round(raw * 100));
+        if (this.completedSteps < this.totalSteps && percentage < 2 && (loadingCount > 0 || this.completedSteps > 0)) {
+            percentage = Math.max(percentage, 2);
+        }
         const progressBar = document.getElementById('loading-progress-bar');
         const progressText = document.getElementById('loading-progress-text');
-        
+
         if (progressBar) {
             progressBar.style.width = `${percentage}%`;
         }
-        
+
         if (progressText) {
             progressText.textContent = `${percentage}%`;
         }
-        
-        // Wenn alle Schritte abgeschlossen sind, Loading Screen ausblenden
+
+        // Wenn alle Schritte abgeschlossen sind, bleibt der Film sichtbar.
+        // Der Nutzer startet den Konfigurator bewusst per Button.
         if (this.completedSteps === this.totalSteps) {
-            setTimeout(() => {
-                this.hideLoadingScreen();
-            }, 500); // Kurze Verzögerung für bessere UX
+            this.showReadyState();
+        }
+    },    
+    // Loader fertig, aber Film sichtbar lassen bis Nutzer startet
+    showReadyState() {
+        if (this.readyToContinue) return;
+        this.readyToContinue = true;
+
+        const loadingScreen = document.getElementById('loading-screen');
+        const skipButton = document.getElementById('intro-skip-btn');
+        const statusFrame = document.querySelector('.intro-status-frame');
+        const hasErrors = Object.values(this.items).some(item => item.status === 'error');
+
+        if (loadingScreen) {
+            loadingScreen.classList.add('intro-ready');
+            loadingScreen.setAttribute('data-loading-complete', 'true');
+        }
+
+        if (statusFrame && !document.getElementById('intro-ready-note')) {
+            const readyNote = document.createElement('div');
+            readyNote.id = 'intro-ready-note';
+            readyNote.className = hasErrors ? 'intro-ready-note intro-ready-note-warning' : 'intro-ready-note';
+            readyNote.innerHTML = hasErrors
+                ? '<strong>Bereit mit Hinweisen.</strong><span>Einige optionale Dienste wurden nicht geladen. Sie koennen den Film weiter ansehen oder trotzdem starten.</span>'
+                : '<strong>Alles geladen.</strong><span>Sie koennen die Animation weiter ansehen oder den Konfigurator starten.</span>';
+            statusFrame.insertAdjacentElement('afterend', readyNote);
+        }
+
+        if (skipButton) {
+            skipButton.dataset.ready = 'true';
+            skipButton.textContent = hasErrors ? 'Trotzdem starten' : 'Konfigurator starten';
+            skipButton.setAttribute('aria-pressed', 'false');
+            skipButton.classList.add('intro-start-btn');
+            skipButton.focus({ preventScroll: true });
         }
     },
     
+    // Zweite Intro-Phase: Zoom zur Tuer, Klinke ziehen oder Auto-Start
+    startDoorUnlockSequence() {
+        if (this.doorUnlockStarted) return;
+        this.doorUnlockStarted = true;
+
+        const loadingScreen = document.getElementById('loading-screen');
+        const skipButton = document.getElementById('intro-skip-btn');
+        const stage = document.querySelector('.intro-stage');
+        const handle = document.querySelector('.intro-cylinder');
+        const doorFrame = document.querySelector('.intro-door-frame');
+
+        if (!loadingScreen || !handle || !doorFrame) {
+            this.hideLoadingScreen();
+            return;
+        }
+
+        loadingScreen.classList.remove('intro-compact');
+        loadingScreen.classList.add('intro-unlock-mode');
+
+        if (skipButton) {
+            skipButton.textContent = 'Klinke ziehen oder warten...';
+            skipButton.disabled = true;
+            skipButton.setAttribute('aria-pressed', 'true');
+        }
+
+        if (stage && !document.getElementById('intro-door-action-hint')) {
+            const hint = document.createElement('div');
+            hint.id = 'intro-door-action-hint';
+            hint.className = 'intro-door-action-hint';
+            hint.innerHTML = '<strong>Klinke nach unten ziehen</strong><span>Zum Oeffnen ziehen oder kurz warten.</span><small>Auto-Start in 3 Sekunden</small>';
+            stage.appendChild(hint);
+        }
+
+        let startY = null;
+        let isDragging = false;
+        const finish = () => this.completeDoorUnlockSequence();
+
+        const beginDrag = (event) => {
+            if (this.doorUnlockStarted !== true || loadingScreen.classList.contains('intro-door-opened')) return;
+            isDragging = true;
+            startY = event.clientY || 0;
+            loadingScreen.classList.add('intro-handle-grabbed');
+            handle.setPointerCapture?.(event.pointerId);
+        };
+
+        const moveDrag = (event) => {
+            if (!isDragging || startY === null) return;
+            const deltaY = (event.clientY || 0) - startY;
+            const pull = Math.max(0, Math.min(deltaY, 62));
+            handle.style.setProperty('--handle-pull', `${pull}px`);
+            if (pull >= 34) finish();
+        };
+
+        const endDrag = () => {
+            if (!isDragging) return;
+            isDragging = false;
+            startY = null;
+            loadingScreen.classList.remove('intro-handle-grabbed');
+            handle.style.setProperty('--handle-pull', '0px');
+        };
+
+        handle.addEventListener('pointerdown', beginDrag, { once: false });
+        handle.addEventListener('pointermove', moveDrag, { once: false });
+        handle.addEventListener('pointerup', endDrag, { once: false });
+        handle.addEventListener('pointercancel', endDrag, { once: false });
+        handle.addEventListener('click', finish, { once: true });
+        doorFrame.addEventListener('click', finish, { once: true });
+
+        this.doorUnlockTimer = setTimeout(finish, 3000);
+    },
+
+    completeDoorUnlockSequence() {
+        const loadingScreen = document.getElementById('loading-screen');
+        const skipButton = document.getElementById('intro-skip-btn');
+        if (!loadingScreen || loadingScreen.classList.contains('intro-door-opened')) return;
+
+        if (this.doorUnlockTimer) clearTimeout(this.doorUnlockTimer);
+        this.doorUnlockTimer = null;
+
+        loadingScreen.classList.remove('intro-handle-grabbed');
+        loadingScreen.classList.add('intro-door-opened');
+
+        const handle = document.querySelector('.intro-cylinder');
+        if (handle) handle.style.setProperty('--handle-pull', '42px');
+
+        if (skipButton) {
+            skipButton.textContent = 'Tuer geoeffnet';
+        }
+
+        setTimeout(() => this.hideLoadingScreen(), 760);
+    },
     // Loading Screen ausblenden und Auth Screen zeigen
     hideLoadingScreen() {
         const loadingScreen = document.getElementById('loading-screen');
@@ -273,15 +448,16 @@ const loadingStatus = {
                 
                 // Initialisiere Auth Screen Event Listeners
                 initializeAuthScreen();
-                
-                // Zeige Auth Screen
-                if (authScreen) {
+
+                if (AUTH_SELECTION_SCREEN_ENABLED && authScreen) {
                     authScreen.classList.remove('hidden');
                     authScreen.style.opacity = '0';
                     authScreen.style.transition = 'opacity 0.5s ease-in';
                     setTimeout(() => {
                         authScreen.style.opacity = '1';
                     }, 50);
+                } else if (authScreen) {
+                    authScreen.classList.add('hidden');
                 }
             }, 500);
         }
@@ -305,6 +481,33 @@ let currentModalRowId = null;
 let planData = { rows: [], keys: [] };
 let optionDetailsMap = new Map();
 
+const LOCAL_SESSION_KEY = 'lastSchliessplanSession';
+const RESUME_SESSION_KEY = 'resumeSchliessplanSession';
+const RESUME_PLAN_ID_KEY = 'resumeSchliessplanId';
+const START_NEW_CONFIG_KEY = 'startNewConfig';
+const AUTO_SAVE_DELAY_MS = 5000;
+
+let activeSchliessplanId = null;
+let activeKundeId = null;
+let autoSaveTimer = null;
+let autoSaveInProgress = false;
+let pendingAutoSave = false;
+let lastRemoteSaveSignature = '';
+
+/** Map für Funktions-Icons im Schließplan; Keys = Strapi funktionens.key (z. B. ein_schluessel_mehrere_tueren) */
+function rebuildAllFeaturesFromContentTypes() {
+    ALL_FEATURES = {};
+    const list = contentTypes.funktionen || [];
+    list.forEach((f, idx) => {
+        const featureKey = f.key || `feature_${f.id ?? idx}`;
+        ALL_FEATURES[featureKey] = {
+            name: f.name || featureKey,
+            icon: 'fa-circle',
+            color: 'text-gray-600',
+            title: (f.description && String(f.description).trim()) || f.name || featureKey
+        };
+    });
+}
 
 // --- DOM ELEMENTS ---
 const elements = {
@@ -333,6 +536,102 @@ const elements = {
 
 // --- HELPER FUNCTIONS ---
 function getAttributes(item) { return item ? (item.attributes || item) : null; }
+
+function escapeHtmlValue(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function normalizeSystemColor(color, fallback = '#e8eef5') {
+    const raw = String(color || '').trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw;
+    if (/^#[0-9a-fA-F]{3}$/.test(raw)) {
+        return '#' + raw.slice(1).split('').map(ch => ch + ch).join('');
+    }
+    return fallback;
+}
+
+function hexToRgba(hex, alpha = 0.14) {
+    const normalized = normalizeSystemColor(hex, '#e8eef5');
+    const value = normalized.slice(1);
+    const r = parseInt(value.slice(0, 2), 16);
+    const g = parseInt(value.slice(2, 4), 16);
+    const b = parseInt(value.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function normalizeSchliessplanSystemOption(entry, fallbackIndex = 0) {
+    const attrs = getAttributes(entry) || {};
+    const name = attrs.name || attrs.label || attrs.title || `System ${fallbackIndex + 1}`;
+    const key = attrs.key || attrs.slug || String(name).toLowerCase().trim().replace(/\s+/g, '-');
+    return {
+        id: entry?.id ?? attrs.id ?? key,
+        key,
+        name,
+        color: normalizeSystemColor(attrs.color || attrs.farbe || attrs.hexColor || attrs.hex_color, fallbackIndex === 0 ? '#2563eb' : '#16a34a'),
+        sortOrder: Number(attrs.sortOrder ?? attrs.order ?? fallbackIndex),
+        isActive: attrs.isActive !== false && attrs.active !== false,
+        techType: attrs.techType || attrs.technologyType || attrs.technologie || key
+    };
+}
+
+function getSchliessplanSystemOptions() {
+    const activeOptions = (schliessplanSystemOptions || [])
+        .filter(option => option && option.isActive !== false)
+        .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+    return activeOptions.length > 0
+        ? activeOptions
+        : DEFAULT_SCHLIESSPLAN_SYSTEM_OPTIONS.map(option => ({ ...option }));
+}
+
+function findSchliessplanSystemOption(value) {
+    const valueString = String(value ?? '');
+    return getSchliessplanSystemOptions().find(option =>
+        String(option.id) === valueString ||
+        String(option.key) === valueString ||
+        String(option.name) === valueString
+    );
+}
+
+function getDefaultSchliessplanSystemOption(techType = 'mechanisch') {
+    const key = String(techType || '').toLowerCase().includes('elektr') ? 'elektronisch' : 'mechanisch';
+    return findSchliessplanSystemOption(key) || getSchliessplanSystemOptions()[0];
+}
+
+function inferTechTypeFromSystemOption(option) {
+    if (!option) return null;
+    const probe = `${option.techType || ''} ${option.key || ''} ${option.name || ''}`.toLowerCase();
+    if (probe.includes('elektr')) return 'elektronisch';
+    if (probe.includes('mechan')) return 'mechanisch';
+    return null;
+}
+
+async function loadSchliessplanSystemOptionsFromBackend() {
+    const fallback = DEFAULT_SCHLIESSPLAN_SYSTEM_OPTIONS.map(option => ({ ...option }));
+    try {
+        const response = await fetch(`${STRAPI_BASE_URL}/api/schliessplan-system-options?pagination[pageSize]=100&sort=sortOrder:asc&_t=${Date.now()}`, {
+            headers: { 'Content-Type': 'application/json' }
+        });
+        if (!response.ok) {
+            schliessplanSystemOptions = fallback;
+            console.info('Schliessplan-Systemoptionen: Backend-Endpunkt nicht aktiv, nutze Standardoptionen.');
+            return schliessplanSystemOptions;
+        }
+        const payload = await response.json();
+        const backendOptions = (payload.data || [])
+            .map((entry, index) => normalizeSchliessplanSystemOption(entry, index))
+            .filter(option => option.isActive !== false);
+        schliessplanSystemOptions = backendOptions.length > 0 ? backendOptions : fallback;
+    } catch (error) {
+        schliessplanSystemOptions = fallback;
+        console.info('Schliessplan-Systemoptionen: Standardoptionen aktiv.', error.message);
+    }
+    return schliessplanSystemOptions;
+}
 
 // Sammle Zylinder aus allen Fragen
 function collectZylindersFromQuestions(questionsResponse) {
@@ -461,24 +760,27 @@ function getRecommendedCylinders(userAnswers) {
             if (hasMatchingTechnologie) matchCount++;
         }
         
-        // Prüfe Türen
-        if (userAnswers.tueren && userAnswers.tueren.length > 0) {
+        // Prüfe Türen (Antwort kann Array sein oder einzelner String bei single-choice)
+        const tuerenAnswers = Array.isArray(userAnswers.tueren)
+            ? userAnswers.tueren
+            : (userAnswers.tueren ? [userAnswers.tueren] : []);
+        if (tuerenAnswers.length > 0) {
             // WENN Zylinder hat keine suitableTueren definiert, zähle es als Match (flexibel)
             const hasNoTuerenRestriction = !cylinder.suitableTueren || cylinder.suitableTueren.length === 0;
             
             if (hasNoTuerenRestriction) {
                 // Keine Einschränkung = alle Türen matchen
-                matchCount += userAnswers.tueren.length;
+                matchCount += tuerenAnswers.length;
             } else {
                 // Prüfe gegen die Einschränkungen
-                const matchingTueren = userAnswers.tueren.filter(selectedTuer => 
+                const matchingTueren = tuerenAnswers.filter(selectedTuer => 
                     cylinder.suitableTueren.some(option => 
                         option.name === selectedTuer || option.key === selectedTuer
                     )
                 );
                 matchCount += matchingTueren.length;
             }
-            totalChecks += userAnswers.tueren.length;
+            totalChecks += tuerenAnswers.length;
         }
         
         // Prüfe Funktionen
@@ -592,43 +894,8 @@ async function fetchAndHandle(url, requestName, timeout = 10000) {
 
 // Neue Funktion zum Laden aller Optionen mit Paginierung
 async function fetchAllOptions() {
-    try {
-        console.log('🔄 Lade alle Optionen mit Paginierung...');
-        let allOptions = [];
-        let currentPage = 1;
-        let hasMorePages = true;
-        
-        while (hasMorePages) {
-            const response = await fetchAndHandle(
-                `${STRAPI_BASE_URL}/api/options?populate[0]=icon&populate[1]=child_options&populate[2]=parent_options&pagination[page]=${currentPage}&pagination[pageSize]=25`,
-                `Optionen Seite ${currentPage} laden`
-            );
-            
-            if (!response || !response.data) {
-                console.warn(`Keine Daten für Seite ${currentPage}`);
-                break;
-            }
-            
-            console.log(`Seite ${currentPage} geladen:`, response.data.length, 'Optionen');
-            allOptions = allOptions.concat(response.data);
-            
-            // Prüfe ob es weitere Seiten gibt
-            if (response.meta && response.meta.pagination) {
-                const { page, pageCount } = response.meta.pagination;
-                console.log(`Paginierung: Seite ${page} von ${pageCount}`);
-                hasMorePages = page < pageCount;
-                currentPage++;
-            } else {
-                hasMorePages = false;
-            }
-        }
-        
-        console.log(`✅ Alle Optionen geladen: ${allOptions.length} insgesamt`);
-        return allOptions;
-    } catch (error) {
-        console.error('❌ Fehler beim Laden aller Optionen:', error);
-        return [];
-    }
+    console.info('Optionen werden aus Question-Relations geladen; der alte /api/options-Endpunkt ist deaktiviert.');
+    return [];
 }
 
 // Neue Funktion zum Aktualisieren aller Daten vom Backend
@@ -782,6 +1049,8 @@ async function refreshData(showProgress = true) {
             allCylinderSystems = [];
             loadingStatus.updateStatus('zylinder', 'error', error.message);
         }
+
+        await loadSchliessplanSystemOptionsFromBackend();
 
         // Logo setzen
         if (globalSettingsResponse && globalSettingsResponse.data) {
@@ -1029,9 +1298,6 @@ async function refreshData(showProgress = true) {
                     case 'funktionen':
                         options = questionData.funktionens?.data || questionData.funktionens || contentTypes.funktionen;
                         break;
-                    case 'zylinder':
-                        options = questionData.zylinders?.data || questionData.zylinders || allCylinderSystems;
-                        break;
                     default:
                         options = [];
                 }
@@ -1112,30 +1378,11 @@ async function refreshData(showProgress = true) {
                     type: 'multiple',
                     order: 6,
                     options: contentTypes.funktionen
-                },
-                {
-                    id: 7,
-                    questionText: 'Welches Zylinder-System bevorzugen Sie?',
-                    question: 'Welches Zylinder-System bevorzugen Sie?',
-                    description: 'Wählen Sie das passende Zylinder-System basierend auf Ihren Anforderungen.',
-                    key: 'zylinder',
-                    type: 'single',
-                    order: 7,
-                    options: allCylinderSystems.map(cylinder => ({
-                        id: cylinder.id,
-                        text: cylinder.name,
-                        value: cylinder.name,
-                        key: cylinder.name.toLowerCase().replace(/\s+/g, '_'),
-                        icon: null,
-                        description: cylinder.description,
-                        price: cylinder.price,
-                        image: cylinder.image
-                    }))
                 }
             ];
         }
         
-        // Zylinder-Frage wurde entfernt - Navigation geht direkt zum Zylinder-Finder
+        // Keine separate „Zylinder wählen“-Frage – nach der letzten Frage geht es direkt zum Zylinder-Finder
         
         console.log('📊 Fragen aus Content Types erstellt:', questionsData);
 
@@ -1310,9 +1557,8 @@ async function refreshData(showProgress = true) {
             console.log('=== FRAGEN VERARBEITUNG DEBUGGING END ===');
         }
 
-        // Features werden nicht mehr geladen, da sie in den Content Types integriert sind
-        console.log('🔄 Features werden über Content Types geladen...');
-        ALL_FEATURES = {};
+        console.log('🔄 ALL_FEATURES aus Funktionen-Content-Type aufbauen...');
+        rebuildAllFeaturesFromContentTypes();
 
         // UI aktualisieren wenn nötig
         if (currentQuestionIndex < questionsData.length) {
@@ -1409,7 +1655,7 @@ function initializeFunctionModal() {
 
         const featureHtml = `
             <label class="flex items-center p-3 border rounded-lg gap-4 cursor-pointer hover:bg-gray-50">
-                <input type="checkbox" data-feature="${featureKey}" class="h-5 w-5 rounded border-gray-300 text-[#1a3d5c] focus:ring-[#1a3d5c]">
+                <input type="checkbox" data-feature="${featureKey}" class="h-5 w-5 rounded border-gray-300 text-[#203d5d] focus:ring-[#203d5d]">
                 <span class="font-semibold flex-1 text-left">${feature.name}</span>
                 <i class="fas ${feature.icon} ${feature.color} fa-fw" title="${feature.title}"></i>
             </label>
@@ -1431,6 +1677,12 @@ async function initializeQuestionnaire() {
         const success = await refreshData(true);
         if (!success) {
             throw new Error("Fehler beim Laden der initialen Daten vom Backend");
+        }
+
+        const restoredStartupSession = await consumeStartupSessionIntent();
+        if (restoredStartupSession) {
+            console.log('✅ Gespeicherte Schließplan-Session wiederhergestellt');
+            return;
         }
 
         console.log('📊 Nach refreshData:');
@@ -1512,7 +1764,7 @@ function renderCurrentQuestion() {
     questionElement.innerHTML = `
         <h2 class="text-2xl font-semibold text-center text-gray-700 mb-2">${question.questionText || question.question || 'Frage'}</h2>
         <p class="text-center text-gray-500 mb-6">${question.description || ''}</p>
-        <div class="options-grid-container grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl mx-auto max-h-[350px] overflow-y-auto pr-2"></div>
+        <div class="options-grid-container mx-auto grid w-full max-w-4xl grid-cols-1 gap-4 md:grid-cols-2"></div>
     `;
     console.log('Leere contentContainer...');
     elements.contentContainer.innerHTML = '';
@@ -1603,14 +1855,14 @@ function renderCurrentQuestion() {
     }
 
     if (question.key === 'tueren') {
-        const addCustomDoorCardHtml = `<div class="option-card border-2 border-dashed border-gray-400 rounded-lg p-4 cursor-pointer text-left flex items-center transition-all duration-200 hover:bg-gray-100 hover:border-green-500" onclick="focusCustomDoorInput()"><i class="fas fa-plus-circle text-green-500 fa-fw text-2xl mr-4 flex-shrink-0"></i><div><p class="font-semibold text-lg text-gray-700">Eigene Tür hinzufügen</p><p class="text-gray-600 text-sm mt-1">Benennen Sie eine nicht aufgelistete Tür.</p></div></div>`;
+        const addCustomDoorCardHtml = `<div class="option-card flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-gray-400 p-4 text-center transition-all duration-200 hover:border-green-500 hover:bg-gray-100" onclick="focusCustomDoorInput()"><i class="fas fa-plus-circle fa-fw flex-shrink-0 text-2xl text-green-500"></i><div><p class="text-lg font-semibold text-gray-700">Eigene Tür hinzufügen</p><p class="mt-1 text-sm text-gray-600">Benennen Sie eine nicht aufgelistete Tür.</p></div></div>`;
         optionsGridHtml += addCustomDoorCardHtml;
     }
 
-    optionsGridContainer.innerHTML = optionsGridHtml || `<p class="text-center text-gray-500 col-span-2">Keine Optionen für diese Frage verfügbar.</p>`;
+    optionsGridContainer.innerHTML = optionsGridHtml || `<p class="col-span-2 text-center text-gray-500">Keine Optionen für diese Frage verfügbar.</p>`;
     
     if (question.key === 'tueren') {
-        const customInputHtml = `<div class="mt-6 pt-6 border-t"><h3 class="text-lg font-semibold text-center text-gray-600 mb-4">Eigene Tür/Bereich hinzufügen:</h3><div class="flex items-center justify-center gap-2"><input type="text" id="custom-input" class="input-cell w-64" placeholder="z.B. Werkstatt" onkeydown="if(event.key==='Enter') { event.preventDefault(); addCustomOption(); }"><button onclick="addCustomOption()" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Hinzufügen</button></div></div>`;
+        const customInputHtml = `<div class="mt-6 border-t pt-6"><h3 class="mb-4 text-center text-lg font-semibold text-gray-600">Eigene Tür/Bereich hinzufügen:</h3><div class="flex flex-wrap items-center justify-center gap-2"><input type="text" id="custom-input" class="input-cell w-64 max-w-full" placeholder="z.B. Werkstatt" onkeydown="if(event.key==='Enter') { event.preventDefault(); addCustomOption(); }"><button onclick="addCustomOption()" class="rounded-lg bg-green-500 px-4 py-2 font-bold text-white hover:bg-green-600">Hinzufügen</button></div></div>`;
         questionElement.insertAdjacentHTML('beforeend', customInputHtml);
     }
     
@@ -1619,17 +1871,41 @@ function renderCurrentQuestion() {
 }
 
 function createOptionCardHtml(question, option) {
-    const isSelected = userAnswers[question.key]?.includes(option.name || option.text);
-    const iconHtml = option.icon ? `<img src="${option.icon}" alt="Icon" class="w-8 h-8 mr-4">` : '';
+    const optLabel = option.name || option.text;
+    const ua = userAnswers[question.key];
+    const isSelected = Array.isArray(ua)
+        ? ua.includes(optLabel)
+        : ua !== undefined && ua !== null && ua === optLabel;
+    const iconHtml = option.icon ? `<img src="${option.icon}" alt="Icon" class="mb-2 h-8 w-8">` : '';
     const recommendationClass = option.empfehlung === 'Empfohlen' ? 'is-recommended' : '';
     let selectionClass = isSelected ? (option.isCustom ? 'selected-custom' : 'selected') : '';
     const customCardClass = option.isCustom ? 'is-custom-card' : '';
     const isCustomFlag = !!option.isCustom;
     const optionName = option.name || option.text;
-    return `<div class="option-card border-2 border-gray-300 rounded-lg p-4 cursor-pointer text-left flex items-center relative transition-all duration-200 ${recommendationClass} ${selectionClass} ${customCardClass}" onclick="selectOption(this, '${question.key}', '${optionName}', '${question.type}', ${isCustomFlag})">${iconHtml}<div><p class="font-semibold text-lg">${optionName}</p>${option.description ? `<p class="text-gray-600 text-sm mt-1">${option.description}</p>` : ''}</div></div>`;
+    const safeName = String(optionName).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    return `<div class="option-card relative flex cursor-pointer flex-col items-center border-2 border-gray-300 rounded-lg p-4 text-center transition-all duration-200 ${recommendationClass} ${selectionClass} ${customCardClass}" onclick="selectOption(this, '${question.key}', '${safeName}', '${question.type}', ${isCustomFlag})">${iconHtml}<div><p class="text-lg font-semibold">${optionName}</p>${option.description ? `<p class="mt-1 text-sm text-gray-600">${option.description}</p>` : ''}</div></div>`;
+}
+
+function getQuestionAnswerValue(question) {
+    if (!question) return undefined;
+    if (question.key === 'tueren' || question.key === 'tuerens') {
+        return userAnswers.tueren ?? userAnswers.tuerens;
+    }
+    return userAnswers[question.key];
+}
+
+function questionHasValidAnswer(question) {
+    const answer = getQuestionAnswerValue(question);
+    if (Array.isArray(answer)) {
+        return answer.some(value => value !== undefined && value !== null && String(value).trim() !== '');
+    }
+    return answer !== undefined && answer !== null && String(answer).trim() !== '';
 }
 
 function selectOption(element, key, value, type, isCustom) {
+    const customClass = 'selected-custom';
+    const standardClass = 'selected';
+
     if (type === 'single') {
         if (key === 'objekttyp' && userAnswers[key] !== value) {
             delete userAnswers.tueren;
@@ -1638,23 +1914,36 @@ function selectOption(element, key, value, type, isCustom) {
             if (tuerenFrage) tuerenFrage.options = tuerenFrage.options.filter(opt => !opt.isCustom);
         }
         userAnswers[key] = value;
-        setTimeout(() => handleNext(), 100);
-    } else {
-        if (!userAnswers[key]) userAnswers[key] = [];
-        const index = userAnswers[key].indexOf(value);
-        const customClass = 'selected-custom';
-        const standardClass = 'selected';
-        if (index > -1) {
-            userAnswers[key].splice(index, 1);
-            element.classList.remove(standardClass, customClass);
-        } else {
-            userAnswers[key].push(value);
-            element.classList.add(isCustom ? customClass : standardClass);
+        const container = element.closest('.options-grid-container') || elements.contentContainer;
+        if (container) {
+            container.querySelectorAll('.option-card').forEach(card => card.classList.remove(standardClass, customClass));
         }
+        element.classList.add(isCustom ? customClass : standardClass);
+        saveSessionToStorage();
+        updateNavigation();
+        return;
     }
+
+    if (!userAnswers[key]) userAnswers[key] = [];
+    const index = userAnswers[key].indexOf(value);
+    if (index > -1) {
+        userAnswers[key].splice(index, 1);
+        element.classList.remove(standardClass, customClass);
+    } else {
+        userAnswers[key].push(value);
+        element.classList.add(isCustom ? customClass : standardClass);
+    }
+    saveSessionToStorage();
+    updateNavigation();
 }
 
 function handleNext() {
+    const currentQuestion = questionsData[currentQuestionIndex];
+    if (!questionHasValidAnswer(currentQuestion)) {
+        updateNavigation();
+        return;
+    }
+
     if (currentQuestionIndex < questionsData.length - 1) {
         currentQuestionIndex++;
         renderCurrentQuestion();
@@ -1662,11 +1951,13 @@ function handleNext() {
         saveSessionToStorage();
     } else {
         // Prüfe ob alle notwendigen Fragen beantwortet wurden
-        if (!userAnswers['tueren'] || userAnswers['tueren'].length === 0) {
-            alert("Bitte wählen Sie mindestens eine Tür aus oder fügen Sie eine eigene hinzu.");
+        const tAns = userAnswers['tueren'] ?? userAnswers['tuerens'];
+        const tuerenOk = Array.isArray(tAns) ? tAns.length > 0 : (tAns !== undefined && tAns !== null && String(tAns).length > 0);
+        if (!tuerenOk) {
+            alert("Bitte wählen Sie eine Option aus oder fügen Sie eine eigene Tür hinzu.");
             return;
         }
-        // Nach Frage 6 direkt zum Zylinder-Finder
+        // Nach der letzten Frage (Qualität) direkt zum Zylinder-Finder
         renderCylinderFinder();
         // Speichere Session
         saveSessionToStorage();
@@ -1687,11 +1978,16 @@ function updateNavigation() {
     const totalSteps = questionsData.length + 1;
     const currentStep = currentQuestionIndex + 1;
     const progress = (currentStep / totalSteps) * 100;
+    const currentQuestion = questionsData[currentQuestionIndex];
+    const hasAnswer = questionHasValidAnswer(currentQuestion);
     
     elements.progressBar.style.width = `${progress}%`;
     elements.subtitle.innerText = `Schritt ${currentStep} von ${totalSteps}`;
     elements.prevBtn.disabled = currentQuestionIndex === 0;
     elements.nextBtn.innerText = (currentQuestionIndex === questionsData.length - 1) ? "Zylinder finden" : "Weiter";
+    elements.nextBtn.disabled = !hasAnswer;
+    elements.nextBtn.classList.toggle('is-waiting-for-selection', !hasAnswer);
+    elements.nextBtn.title = hasAnswer ? '' : 'Bitte zuerst eine Auswahl treffen.';
 }
 
 function addCustomOption() {
@@ -1714,6 +2010,7 @@ function addCustomOption() {
     tuerenFrage.options.push(newOption);
     input.value = '';
     renderCurrentQuestion();
+    saveSessionToStorage();
 }
 
 // --- ZYLINDER-ASSISTENT LOGIK (VEREINFACHT) ---
@@ -1767,8 +2064,8 @@ function renderCylinderFinder() {
     if (!allCylinderSystems || allCylinderSystems.length === 0) {
         elements.contentContainer.innerHTML = `
             <div class="text-center">
-                <p class="text-red-500 mb-4">Keine Zylinder verfügbar. Bitte überprüfen Sie die Daten im Backend.</p>
-                <button onclick="location.reload()" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">
+                <p class="mb-4 text-red-500">Keine Zylinder verfügbar. Bitte überprüfen Sie die Daten im Backend.</p>
+                <button onclick="location.reload()" class="rounded-lg bg-blue-500 px-4 py-2 text-white hover:bg-blue-600">
                     Seite neu laden
                 </button>
             </div>
@@ -1782,7 +2079,7 @@ function renderCylinderFinder() {
     if (recommendedCylinders.length === 0) {
         elements.contentContainer.innerHTML = `
             <div class="text-center">
-                <p class="text-red-500 mb-4">Keine Zylinder verfügbar.</p>
+                <p class="mb-4 text-red-500">Keine Zylinder verfügbar.</p>
             </div>
         `;
         return;
@@ -1797,8 +2094,8 @@ function renderCylinderFinder() {
     const otherCylindersHtml = otherCylinders.map(cylinder => createCylinderCard(cylinder, false)).join('');
 
     elements.contentContainer.innerHTML = `
-        <div class="max-w-6xl mx-auto px-4">
-            <div class="text-center mb-8">
+        <div class="mx-auto w-full max-w-6xl pr-1">
+            <div class="mb-8 text-center">
                 <h2 class="text-2xl font-semibold text-gray-700">Verfügbare Zylinder-Systeme</h2>
                 <p class="text-gray-500">Wählen Sie das passende Zylinder-System für Ihren Schließplan.</p>
             </div>
@@ -1809,7 +2106,7 @@ function renderCylinderFinder() {
             </div>
             
             ${otherCylinders.length > 0 ? `
-            <div class="text-center mb-6">
+            <div class="mb-6 text-center">
                 <h3 class="text-xl font-semibold text-gray-600">Andere passende Optionen</h3>
                 <p class="text-gray-500">Diese Systeme könnten ebenfalls eine gute Wahl sein.</p>
             </div>
@@ -1818,8 +2115,8 @@ function renderCylinderFinder() {
             </div>
             ` : ''}
             
-            <div class="text-center mt-12">
-                <button onclick="generatePlan()" class="bg-[#1a3d5c] text-white px-8 py-3 rounded-lg hover:bg-[#2a4d6c] transition-colors">
+            <div class="mt-12 text-center">
+                <button onclick="generatePlan()" class="rounded-lg bg-[#203d5d] px-8 py-3 text-white transition-colors hover:bg-[#1a344f]">
                     <i class="fas fa-cog mr-2"></i>Schließplan generieren
                 </button>
             </div>
@@ -1877,12 +2174,12 @@ function createCylinderCard(system, isMain) {
 
     if (isMain) {
         return `
-            <div class="cylinder-card bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-6 shadow-lg">
+            <div class="cylinder-card bg-white border-2 border-blue-200 rounded-xl p-6 shadow-lg">
                 <div class="flex flex-col lg:flex-row gap-6">
                     <!-- Bild und Hauptinfo -->
                     <div class="lg:w-1/3">
                         ${imageHtml}
-                        <div class="text-center lg:text-left">
+                        <div class="text-center">
                             <h3 class="text-2xl font-bold text-gray-800 mb-2">${system.name}</h3>
                             <p class="text-gray-600 mb-4">${system.description || 'Hochwertiger Zylinder für Ihre Anforderungen'}</p>
                             ${priceHtml}
@@ -1898,8 +2195,8 @@ function createCylinderCard(system, isMain) {
                         </div>
                         
                         <!-- Blauer Auswählen Button -->
-                        <div class="text-center lg:text-left">
-                            <button onclick="selectCylinderSystem(${system.id})" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg transition-colors text-lg shadow-md hover:shadow-lg">
+                        <div class="text-center">
+                            <button type="button" onclick="selectCylinderSystem(${JSON.stringify(system.id)})" class="bg-[#203d5d] hover:bg-[#1a344f] text-white font-bold py-4 px-8 rounded-lg transition-colors text-lg shadow-md hover:shadow-lg">
                                 <i class="fas fa-check-circle mr-2"></i>Auswählen
                             </button>
                         </div>
@@ -1908,47 +2205,74 @@ function createCylinderCard(system, isMain) {
             </div>`;
     } else {
         return `
-            <div class="cylinder-card alternative-card">
+            <div class="cylinder-card alternative-card text-center">
                 ${imageHtml}
                 <h4 class="text-lg font-bold text-gray-800 mb-2">${system.name}</h4>
                 <p class="text-gray-500 text-sm mb-4 flex-grow">${system.description || 'Alternative Zylinder-Option'}</p>
                 ${matchBarHtml}
                 ${priceHtml}
-                <button onclick="selectCylinderSystem(${system.id})" class="w-full mt-auto bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg transition-colors text-sm">
+                <button type="button" onclick="selectCylinderSystem(${JSON.stringify(system.id)})" class="w-full mt-auto bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg transition-colors text-sm">
                     Als Alternative wählen
                 </button>
             </div>`;
     }
 }
 
+/** Strapi v4/v5: id kann Zahl oder String (documentId) sein */
+function findCylinderSystemById(id) {
+    if (id === undefined || id === null) return undefined;
+    return allCylinderSystems.find(c => String(c.id) === String(id));
+}
+
 function selectCylinderSystem(systemId) {
-    // Finde den ausgewählten Zylinder
-    const selectedCylinder = allCylinderSystems.find(cylinder => cylinder.id === systemId);
+    const selectedCylinder = findCylinderSystemById(systemId);
     if (selectedCylinder) {
         userAnswers.zylinder = selectedCylinder.name;
-        userAnswers.cylinderSystemId = systemId;
+        userAnswers.cylinderSystemId = selectedCylinder.id;
         console.log('✅ Zylinder ausgewählt:', selectedCylinder.name);
     }
     generateInitialPlanData();
-    showSchliessplan();
+    showSchliessplan().catch(err => console.error('❌ showSchliessplan:', err));
+}
+
+/** Button „Schließplan generieren“ im Zylinder-Schritt (ohne vorher eine Karte angeklickt zu haben) */
+async function generatePlan() {
+    if (!userAnswers.cylinderSystemId && allCylinderSystems && allCylinderSystems.length > 0) {
+        userAnswers.cylinderSystemId = allCylinderSystems[0].id;
+    }
+    generateInitialPlanData();
+    await showSchliessplan();
 }
 
 // --- SCHLIESSPLAN LOGIK ---
 
 async function showSchliessplan() {
-    const tuerenFrage = questionsData.find(q => q.key === 'tueren');
-    let alleTuerOptionen = tuerenFrage ? tuerenFrage.options.map(o => o.text) : [];
-    allDoorOptionsForPlan = [...new Set([...(userAnswers['tueren'] || []), ...alleTuerOptionen])];
-    
+    const tuerenFrage = questionsData.find(q => q.key === 'tueren' || q.key === 'tuerens');
+    let alleTuerOptionen = tuerenFrage ? (tuerenFrage.options || []).map(o => o.text || o.name).filter(Boolean) : [];
+    const rawTuerUser = userAnswers['tueren'] ?? userAnswers['tuerens'];
+    const userTuerList = Array.isArray(rawTuerUser)
+        ? rawTuerUser
+        : (rawTuerUser != null && rawTuerUser !== '' ? [rawTuerUser] : []);
+    allDoorOptionsForPlan = [...new Set([...userTuerList, ...alleTuerOptionen])];
+
     elements.questionnaireContainer.classList.add('hidden');
     elements.schliessplanContainer.classList.remove('hidden');
+    elements.schliessplanContainer.scrollTop = 0;
+    if (elements.subtitle) {
+        elements.subtitle.textContent = 'Schließplan bearbeiten';
+    }
     renderPlan();
+    const tableWrap = document.querySelector('#schliessplan-container .overflow-x-auto');
+    if (tableWrap && typeof tableWrap.scrollIntoView === 'function') {
+        tableWrap.scrollIntoView({ block: 'start', behavior: 'auto' });
+    }
     
     // Prüfe ob Benutzer eingeloggt ist und zeige/verstecke Anmelde-Option
     await checkAndShowLoginOption();
     
     // Prüfe ob Benutzer eingeloggt ist und zeige Speichern-Button
     await checkAndShowSaveButton();
+    markPlanDirty('plan-visible');
 }
 
 // Prüfe Auth-Status und zeige Speichern-Button wenn eingeloggt
@@ -2020,20 +2344,25 @@ async function checkAndShowLoginOption() {
 
 function generateInitialPlanData() {
     const techDefault = userAnswers.technologie === 'Rein Elektronisch' ? 'elektronisch' : 'mechanisch';
-    const selectedSystem = allCylinderSystems.find(s => s.id === userAnswers.cylinderSystemId) || allCylinderSystems[0];
+    const selectedSystem = findCylinderSystemById(userAnswers.cylinderSystemId) || allCylinderSystems[0] || null;
+    const defaultSystemOption = getDefaultSchliessplanSystemOption(techDefault);
 
     // Dynamische Standard-Funktionen basierend auf ALL_FEATURES
     const defaultFunctions = {};
     Object.keys(ALL_FEATURES).forEach(key => {
-        // Prüfen ob der Benutzer diese Funktion in den Fragen ausgewählt hat
-        const featureName = ALL_FEATURES[key].name;
+        const feat = ALL_FEATURES[key];
+        if (!feat) return;
+        const featureName = feat.name;
         defaultFunctions[key] = userAnswers.funktionen?.includes(featureName) || false;
     });
 
-    planData.rows = (userAnswers['tueren'] || ['Beispieltür']).map((tuer, index) => ({
+    const rawTueren = userAnswers['tueren'] ?? userAnswers['tuerens'];
+    const tuerenListe = Array.isArray(rawTueren) ? rawTueren : rawTueren != null && rawTueren !== '' ? [rawTueren] : [];
+    planData.rows = (tuerenListe.length > 0 ? tuerenListe : ['Beispieltür']).map((tuer, index) => ({
         id: Date.now() + index, pos: index + 1, tuer: tuer, typ: ZYLINDER_ARTEN[0],
-        systemId: selectedSystem.id,
-        techType: techDefault, massA: '30', massI: '30', anzahl: 1,
+        zylinderSystemId: selectedSystem ? selectedSystem.id : null,
+        systemId: defaultSystemOption ? defaultSystemOption.key : techDefault,
+        techType: inferTechTypeFromSystemOption(defaultSystemOption) || techDefault, massA: '30', massI: '30', anzahl: 1,
         funktionen: { ...defaultFunctions }, // NEU: Standardfunktionen werden hier für jede Tür übernommen
         matrix: [],
         isEditingTuer: false, isAddingCustomTuer: false
@@ -2045,51 +2374,94 @@ function generateInitialPlanData() {
 }
 
 function renderPlan() {
-    const isMixedSystem = userAnswers.technologie === 'Gemischte Anlage';
-    elements.techHeader.style.display = isMixedSystem ? '' : 'none';
-    elements.colorLegend.style.display = isMixedSystem ? 'flex' : 'none';
-    
-    elements.keyHeader.innerHTML = '';
-    planData.keys.forEach(key => {
-        const headerCell = document.createElement('div');
-        headerCell.className = 'schluessel-header-zelle'; 
-        headerCell.innerHTML = `<input type="text" value="${key.name}" data-key-id="${key.id}" onchange="updateKeyName(this)">`;
-        elements.keyHeader.appendChild(headerCell);
-    });
-    
-    const keyCount = planData.keys.length > 0 ? planData.keys.length : 1;
-    elements.keyHeaderMain.colSpan = 1 + keyCount;
-    elements.dynamicHeaderCell.colSpan = keyCount;
-    elements.schliessplanBody.innerHTML = '';
-    planData.rows.forEach(row => {
+    try {
+        if (!elements.schliessplanBody || !elements.keyHeader || !elements.keyHeaderMain || !elements.dynamicHeaderCell) {
+            console.error('❌ renderPlan: fehlende DOM-Referenzen (#schliessplan-body / Schlüssel-Header)');
+            return;
+        }
+        updatePlanRowPositions();
+        const isMixedSystem = userAnswers.technologie === 'Gemischte Anlage';
+        if (elements.techHeader) {
+            elements.techHeader.style.display = isMixedSystem ? '' : 'none';
+        }
+        if (elements.colorLegend) {
+            elements.colorLegend.style.display = isMixedSystem ? 'flex' : 'none';
+        }
+
+        elements.keyHeader.innerHTML = '';
+        planData.keys.forEach(key => {
+            const headerCell = document.createElement('div');
+            headerCell.className = 'schluessel-header-zelle';
+            const inp = document.createElement('input');
+            inp.type = 'text';
+            inp.value = key.name != null ? String(key.name) : '';
+            inp.dataset.keyId = String(key.id);
+            inp.addEventListener('change', function () { updateKeyName(this); });
+            headerCell.appendChild(inp);
+            elements.keyHeader.appendChild(headerCell);
+        });
+
+        const keyCount = planData.keys.length > 0 ? planData.keys.length : 1;
+        elements.keyHeaderMain.colSpan = 1 + keyCount;
+        elements.dynamicHeaderCell.colSpan = keyCount;
+        elements.schliessplanBody.innerHTML = '';
+        planData.rows.forEach(row => {
         const tr = document.createElement('tr');
         tr.dataset.rowId = row.id;
         tr.className = row.techType === 'elektronisch' ? 'row-elektronisch' : 'row-mechanisch';
+        tr.addEventListener('dragover', handleSchliessplanRowDragOver);
+        tr.addEventListener('dragleave', handleSchliessplanRowDragLeave);
+        tr.addEventListener('drop', handleSchliessplanRowDrop);
 
         let tuerCellHtml = '';
         if (row.isAddingCustomTuer) {
             tuerCellHtml = `<input type="text" class="input-cell" placeholder="Bezeichnung eingeben..." onblur="saveCustomDoorName(this, ${row.id})" onkeydown="if(event.key==='Enter') this.blur()">`;
         } else if (row.isEditingTuer) {
             const options = allDoorOptionsForPlan.map(opt => `<option value="${opt}" ${row.tuer === opt ? 'selected' : ''}>${opt}</option>`).join('');
-            tuerCellHtml = `<select class="input-cell" onchange="updateDoorSelection(this, ${row.id})"><option value="">Bitte wählen...</option>${options}<option value="add_custom" class="font-bold text-[#1a3d5c]">Eigene Bezeichnung...</option></select>`;
+            tuerCellHtml = `<select class="input-cell" onchange="updateDoorSelection(this, ${row.id})"><option value="">Bitte wählen...</option>${options}<option value="add_custom" class="font-bold text-[#203d5d]">Eigene Bezeichnung...</option></select>`;
         } else {
-            tuerCellHtml = `<span class="font-semibold">${row.tuer}</span><button onclick="editDoorName(${row.id})" class="ml-2 text-gray-400 hover:text-[#1a3d5c] opacity-50 hover:opacity-100 transition-opacity"><i class="fas fa-pencil-alt fa-xs"></i></button>`;
+            tuerCellHtml = `<span class="font-semibold">${row.tuer}</span><button type="button" aria-label="Tuerbezeichnung bearbeiten" title="Tuerbezeichnung bearbeiten" onclick="editDoorName(${row.id})" class="ml-2 text-gray-400 hover:text-[#203d5d] opacity-50 hover:opacity-100 transition-opacity"><i class="fas fa-pencil-alt fa-xs" aria-hidden="true"></i></button>`;
         }
 
-        const zylinderOptions = ZYLINDER_ARTEN.map(art => `<option value="${art}" ${row.typ === art ? 'selected' : ''}>${art}</option>`).join('');
-        const systemOptions = allCylinderSystems.map(sys => `<option value="${sys.id}" ${row.systemId === sys.id ? 'selected' : ''}>${sys.name}</option>`).join('');
+        const zylinderOptions = ZYLINDER_ARTEN.map(art => `<option value="${escapeHtmlValue(art)}" ${row.typ === art ? 'selected' : ''}>${escapeHtmlValue(art)}</option>`).join('');
+        const systemOptionItems = getSchliessplanSystemOptions();
+        const rowSystemOption = findSchliessplanSystemOption(row.systemId) || systemOptionItems[0];
+        if (rowSystemOption && !findSchliessplanSystemOption(row.systemId)) {
+            row.systemId = rowSystemOption.key;
+        }
+        const rowSystemColor = normalizeSystemColor(rowSystemOption?.color, '#e8eef5');
+        const rowSystemBg = hexToRgba(rowSystemColor, 0.16);
+        tr.classList.add('row-system-colored');
+        tr.style.setProperty('--row-system-color', rowSystemColor);
+        tr.style.setProperty('--row-system-bg', rowSystemBg);
+        tr.dataset.systemColor = rowSystemColor;
+        const systemOptions = systemOptionItems.map(sys => {
+            const color = normalizeSystemColor(sys.color, '#e8eef5');
+            const selected = String(row.systemId) === String(sys.key) || String(row.systemId) === String(sys.id);
+            return `<option value="${escapeHtmlValue(sys.key)}" data-color="${escapeHtmlValue(color)}" style="background-color: ${hexToRgba(color, 0.26)}; color: #142033;" ${selected ? 'selected' : ''}>${escapeHtmlValue(sys.name)}</option>`;
+        }).join('');
+        const systemSelectStyle = `--system-color: ${rowSystemColor}; --system-bg: ${rowSystemBg}; background-color: ${rowSystemBg}; border-left: 7px solid ${rowSystemColor};`;
         
-        let functionIcons = Object.keys(row.funktionen).map(key => row.funktionen[key] ? `<i class="fas ${ALL_FEATURES[key].icon} ${ALL_FEATURES[key].color} fa-fw" title="${ALL_FEATURES[key].title}"></i>` : '').join('');
-        functionIcons += `<button class="icon-btn text-xl text-gray-400 hover:text-[#1a3d5c] ml-2" onclick="openFunctionModal(${row.id})"><i class="fas fa-cog"></i></button>`;
+        let functionIcons = Object.keys(row.funktionen || {}).map((key) => {
+            if (!row.funktionen[key]) return '';
+            const feat = ALL_FEATURES[key];
+            if (!feat) {
+                return `<i class="fas fa-question-circle text-gray-300 fa-fw" title="${key}"></i>`;
+            }
+            return `<i class="fas ${feat.icon} ${feat.color} fa-fw" title="${feat.title || feat.name || ''}"></i>`;
+        }).join('');
+        functionIcons += `<button type="button" aria-label="Funktionen bearbeiten" title="Funktionen bearbeiten" class="icon-btn text-xl text-gray-400 hover:text-[#203d5d] ml-2" onclick="openFunctionModal(${row.id})"><i class="fas fa-cog" aria-hidden="true"></i></button>`;
         
         let matrixCells = planData.keys.map((key, keyIndex) => `<td class="border-l schliessmatrix-cell ${row.matrix[keyIndex] ? 'checked' : ''}" onclick="toggleMatrix(this, ${row.id}, ${keyIndex})">${row.matrix[keyIndex] ? '<i class="fas fa-times text-xl"></i>' : ''}</td>`).join('');
         const techDropdown = isMixedSystem ? `<td><select class="input-cell" onchange="updateRowData(${row.id}, 'techType', this.value)"><option value="mechanisch" ${row.techType === 'mechanisch' ? 'selected' : ''}>Mechanisch</option><option value="elektronisch" ${row.techType === 'elektronisch' ? 'selected' : ''}>Elektronisch</option></select></td>` : '<td style="display: none;"></td>';
         
+        const dragDots = Array.from({ length: 9 }, () => '<span aria-hidden="true"></span>').join('');
         tr.innerHTML = `
+            <td class="row-drag-cell"><button type="button" class="row-drag-handle" draggable="false" data-row-id="${row.id}" title="Zeile verschieben" aria-label="Zeile ${row.pos} verschieben" onpointerdown="handleSchliessplanRowPointerDown(event, ${row.id})">${dragDots}</button></td>
             <td class="font-bold">${row.pos}</td>
             <td>${tuerCellHtml}</td>
             <td><select class="input-cell" onchange="updateRowData(${row.id}, 'typ', this.value)">${zylinderOptions}</select></td>
-            <td><select class="input-cell" onchange="updateRowData(${row.id}, 'systemId', this.value)">${systemOptions}</select></td>
+            <td><select class="input-cell system-color-select" style="${systemSelectStyle}" onchange="updateRowData(${row.id}, 'systemId', this.value)">${systemOptions}</select></td>
             ${techDropdown}
             <td><div class="flex items-center justify-center gap-1"><input type="text" class="input-cell w-16 text-center" value="${row.massA}" onchange="updateRowData(${row.id}, 'massA', this.value)"><span>/</span><input type="text" class="input-cell w-16 text-center" value="${row.massI}" onchange="updateRowData(${row.id}, 'massI', this.value)"></div></td>
             <td><input type="number" min="1" class="input-cell w-20 text-center" value="${row.anzahl}" onchange="updateRowData(${row.id}, 'anzahl', this.value)"></td>
@@ -2097,16 +2469,204 @@ function renderPlan() {
             <td class="border-none bg-gray-100"></td>
             <td class="schliessplan-data-vertical">${row.tuer}</td>
             ${matrixCells}`;
-        elements.schliessplanBody.appendChild(tr);
+            elements.schliessplanBody.appendChild(tr);
+        });
+    } catch (err) {
+        console.error('❌ renderPlan fehlgeschlagen:', err);
+    }
+}
+
+function updatePlanRowPositions() {
+    if (!planData || !Array.isArray(planData.rows)) return;
+    planData.rows.forEach((row, index) => {
+        row.pos = index + 1;
     });
+}
+
+function clearSchliessplanRowDragState() {
+    document.querySelectorAll('#schliessplan-body tr').forEach((row) => {
+        row.classList.remove('is-row-dragging', 'row-drag-over-before', 'row-drag-over-after');
+        delete row.dataset.dropPosition;
+    });
+}
+
+function getSchliessplanDragTargetRow(event) {
+    const row = event.target && event.target.closest ? event.target.closest('#schliessplan-body tr') : null;
+    return row && row.dataset.rowId ? row : null;
+}
+
+function handleSchliessplanRowDragStart(event, rowId) {
+    draggedSchliessplanRowId = String(rowId);
+    if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', draggedSchliessplanRowId);
+    }
+    const row = event.target.closest('tr');
+    if (row) row.classList.add('is-row-dragging');
+}
+
+function handleSchliessplanRowDragOver(event) {
+    if (!draggedSchliessplanRowId) return;
+    const row = getSchliessplanDragTargetRow(event);
+    if (!row || row.dataset.rowId === draggedSchliessplanRowId) return;
+
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+
+    document.querySelectorAll('#schliessplan-body tr').forEach((item) => {
+        if (item !== row) {
+            item.classList.remove('row-drag-over-before', 'row-drag-over-after');
+            delete item.dataset.dropPosition;
+        }
+    });
+
+    const rect = row.getBoundingClientRect();
+    const position = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+    row.dataset.dropPosition = position;
+    row.classList.toggle('row-drag-over-before', position === 'before');
+    row.classList.toggle('row-drag-over-after', position === 'after');
+}
+
+function handleSchliessplanRowDragLeave(event) {
+    const row = getSchliessplanDragTargetRow(event);
+    if (!row || row.contains(event.relatedTarget)) return;
+    row.classList.remove('row-drag-over-before', 'row-drag-over-after');
+    delete row.dataset.dropPosition;
+}
+
+function moveSchliessplanRowToTarget(sourceRowId, targetRowId, dropPosition = 'before') {
+    if (!sourceRowId || !targetRowId || !planData || !Array.isArray(planData.rows)) return false;
+
+    const sourceIndex = planData.rows.findIndex((row) => String(row.id) === String(sourceRowId));
+    const targetIndex = planData.rows.findIndex((row) => String(row.id) === String(targetRowId));
+
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return false;
+
+    const [movedRow] = planData.rows.splice(sourceIndex, 1);
+    let insertIndex = targetIndex;
+    if (sourceIndex < targetIndex) insertIndex -= 1;
+    if (dropPosition === 'after') insertIndex += 1;
+    insertIndex = Math.max(0, Math.min(insertIndex, planData.rows.length));
+
+    planData.rows.splice(insertIndex, 0, movedRow);
+    updatePlanRowPositions();
+    renderPlan();
+    markPlanDirty('row-order');
+    return true;
+}
+
+function handleSchliessplanRowDrop(event) {
+    if (!draggedSchliessplanRowId) return;
+    event.preventDefault();
+
+    const targetRow = getSchliessplanDragTargetRow(event);
+    if (targetRow) {
+        moveSchliessplanRowToTarget(
+            draggedSchliessplanRowId,
+            targetRow.dataset.rowId,
+            targetRow.dataset.dropPosition || 'before'
+        );
+    }
+
+    draggedSchliessplanRowId = null;
+    clearSchliessplanRowDragState();
+}
+
+function handleSchliessplanRowDragEnd() {
+    draggedSchliessplanRowId = null;
+    clearSchliessplanRowDragState();
+}
+
+function handleSchliessplanRowPointerDown(event, rowId) {
+    if (event.button !== undefined && event.button !== 0) return;
+    event.preventDefault();
+
+    draggedSchliessplanRowId = String(rowId);
+    activeSchliessplanPointerDrag = {
+        rowId: String(rowId),
+        startY: event.clientY,
+        moved: false,
+    };
+
+    const sourceRow = event.currentTarget.closest('tr');
+    if (sourceRow) sourceRow.classList.add('is-row-dragging');
+    if (event.currentTarget.setPointerCapture && event.pointerId !== undefined) {
+        try {
+            event.currentTarget.setPointerCapture(event.pointerId);
+        } catch (e) {
+            // Pointer capture can fail if the pointer already ended; dragging still works.
+        }
+    }
+
+    document.addEventListener('pointermove', handleSchliessplanRowPointerMove, { passive: false });
+    document.addEventListener('pointerup', handleSchliessplanRowPointerUp, { once: true });
+    document.addEventListener('pointercancel', handleSchliessplanRowPointerCancel, { once: true });
+}
+
+function handleSchliessplanRowPointerMove(event) {
+    if (!activeSchliessplanPointerDrag || !draggedSchliessplanRowId) return;
+    event.preventDefault();
+    if (Math.abs(event.clientY - activeSchliessplanPointerDrag.startY) > 3) {
+        activeSchliessplanPointerDrag.moved = true;
+    }
+
+    const element = document.elementFromPoint(event.clientX, event.clientY);
+    const row = element && element.closest ? element.closest('#schliessplan-body tr') : null;
+    if (!row || row.dataset.rowId === draggedSchliessplanRowId) return;
+
+    document.querySelectorAll('#schliessplan-body tr').forEach((item) => {
+        if (item !== row) {
+            item.classList.remove('row-drag-over-before', 'row-drag-over-after');
+            delete item.dataset.dropPosition;
+        }
+    });
+
+    const rect = row.getBoundingClientRect();
+    const position = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+    row.dataset.dropPosition = position;
+    row.classList.toggle('row-drag-over-before', position === 'before');
+    row.classList.toggle('row-drag-over-after', position === 'after');
+}
+
+function handleSchliessplanRowPointerUp() {
+    const targetRow = document.querySelector('#schliessplan-body tr.row-drag-over-before, #schliessplan-body tr.row-drag-over-after');
+    if (targetRow && activeSchliessplanPointerDrag && activeSchliessplanPointerDrag.moved) {
+        moveSchliessplanRowToTarget(
+            activeSchliessplanPointerDrag.rowId,
+            targetRow.dataset.rowId,
+            targetRow.dataset.dropPosition || 'before'
+        );
+    }
+
+    activeSchliessplanPointerDrag = null;
+    draggedSchliessplanRowId = null;
+    document.removeEventListener('pointermove', handleSchliessplanRowPointerMove);
+    clearSchliessplanRowDragState();
+}
+
+function handleSchliessplanRowPointerCancel() {
+    activeSchliessplanPointerDrag = null;
+    draggedSchliessplanRowId = null;
+    document.removeEventListener('pointermove', handleSchliessplanRowPointerMove);
+    clearSchliessplanRowDragState();
 }
 
 function updateRowData(rowId, field, value) { 
     const row = planData.rows.find(r => r.id === rowId); 
     if (row) { 
-        const realValue = (field === 'anzahl' || field === 'systemId') ? parseInt(value, 10) : value;
+        let realValue = value;
+        if (field === 'anzahl') {
+            const n = parseInt(value, 10);
+            realValue = Number.isNaN(n) ? 1 : n;
+        } else if (field === 'systemId') {
+            const match = findSchliessplanSystemOption(value);
+            realValue = match ? match.key : value;
+            const inferredTechType = inferTechTypeFromSystemOption(match);
+            if (inferredTechType) row.techType = inferredTechType;
+        }
         row[field] = realValue;
         renderPlan();
+        markPlanDirty(`row-${field}`);
     }
 }
 
@@ -2116,6 +2676,7 @@ function editDoorName(rowId) {
         row.isEditingTuer = true;
         row.isAddingCustomTuer = false;
         renderPlan();
+        markPlanDirty('edit-door');
     }
 }
 
@@ -2129,6 +2690,7 @@ function updateDoorSelection(select, rowId) {
         row.isEditingTuer = false;
     }
     renderPlan();
+    markPlanDirty('door-selection');
 }
 
 function saveCustomDoorName(input, rowId) {
@@ -2139,11 +2701,16 @@ function saveCustomDoorName(input, rowId) {
     row.isEditingTuer = false;
     row.isAddingCustomTuer = false;
     renderPlan();
+    markPlanDirty('custom-door');
 }
 
 function updateKeyName(input) {
-    const key = planData.keys.find(k => k.id === parseInt(input.dataset.keyId));
-    if (key) key.name = input.value;
+    const idRaw = input.dataset.keyId;
+    const key = planData.keys.find(k => String(k.id) === String(idRaw));
+    if (key) {
+        key.name = input.value;
+        markPlanDirty('key-name');
+    }
 }
 
 function toggleMatrix(cell, rowId, keyIndex) {
@@ -2152,12 +2719,14 @@ function toggleMatrix(cell, rowId, keyIndex) {
         row.matrix[keyIndex] = !row.matrix[keyIndex];
         cell.classList.toggle('checked');
         cell.innerHTML = row.matrix[keyIndex] ? '<i class="fas fa-times text-xl"></i>' : '';
+        markPlanDirty('matrix');
     }
 }
 
 function addSchliessplanRow() {
     const techDefault = userAnswers.technologie === 'Rein Elektronisch' ? 'elektronisch' : 'mechanisch';
-    const lastSystemId = planData.rows.length > 0 ? planData.rows[planData.rows.length - 1].systemId : allCylinderSystems[0].id;
+    const defaultSystemOption = getDefaultSchliessplanSystemOption(userAnswers.technologie === 'Rein Elektronisch' ? 'elektronisch' : 'mechanisch');
+    const lastSystemId = planData.rows.length > 0 ? planData.rows[planData.rows.length - 1].systemId : (defaultSystemOption ? defaultSystemOption.key : 'mechanisch');
 
     // Dynamische Standardfunktionen basierend auf ALL_FEATURES
     const defaultFunctions = {};
@@ -2175,12 +2744,14 @@ function addSchliessplanRow() {
     };
     planData.rows.push(newRow);
     renderPlan();
+    markPlanDirty('add-row');
 }
 
 function addKeyColumn() {
     planData.keys.push({ id: Date.now(), name: `Gruppe ${planData.keys.length + 1}` });
     planData.rows.forEach(row => row.matrix.push(false));
     renderPlan();
+    markPlanDirty('add-key');
 }
 
 function openFunctionModal(rowId) {
@@ -2211,7 +2782,7 @@ function openFunctionModal(rowId) {
 
         const featureHtml = `
             <label class="flex items-center p-3 border rounded-lg gap-4 cursor-pointer hover:bg-gray-50">
-                <input type="checkbox" data-feature="${featureKey}" class="h-5 w-5 rounded border-gray-300 text-[#1a3d5c] focus:ring-[#1a3d5c]" ${isChecked ? 'checked' : ''}>
+                <input type="checkbox" data-feature="${featureKey}" class="h-5 w-5 rounded border-gray-300 text-[#203d5d] focus:ring-[#203d5d]" ${isChecked ? 'checked' : ''}>
                 <span class="font-semibold flex-1 text-left">${feature.name}</span>
                 <i class="fas ${feature.icon} ${feature.color} fa-fw" title="${feature.title}"></i>
             </label>
@@ -2240,6 +2811,7 @@ function saveFunctions() {
 
     closeFunctionModal();
     renderPlan();
+    markPlanDirty('functions');
 }
 
 // --- CRM FUNKTIONEN ---
@@ -2351,107 +2923,248 @@ async function findOrCreateKunde(email, vorname, nachname, telefon) {
     }
 }
 
+
+function getCurrentPlanSignature() {
+    try {
+        return JSON.stringify({ userAnswers, planData, currentQuestionIndex });
+    } catch (error) {
+        return String(Date.now());
+    }
+}
+
+function setAutoSaveStatus(type, message) {
+    const statusEl = document.getElementById('autosave-status');
+    if (!statusEl) return;
+
+    const classes = {
+        idle: 'text-gray-500',
+        pending: 'text-blue-700',
+        saving: 'text-blue-700',
+        success: 'text-green-700',
+        error: 'text-red-700'
+    };
+
+    statusEl.className = `mt-2 text-center text-sm ${classes[type] || classes.idle}`;
+    statusEl.textContent = message || '';
+}
+
+async function getKundeForCurrentUser(supabaseClient) {
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    if (userError || !user) {
+        throw new Error('Sie müssen angemeldet sein, um automatisch zu speichern.');
+    }
+
+    const { data: existingKunde, error: kundeError } = await supabaseClient
+        .from('kunden')
+        .select('id, kundenummer')
+        .eq('user_id', user.id)
+        .single();
+
+    if (!kundeError && existingKunde) {
+        activeKundeId = existingKunde.id;
+        return existingKunde;
+    }
+
+    const meta = user.user_metadata || {};
+    const { data: createdKunde, error: createError } = await supabaseClient
+        .from('kunden')
+        .insert([{
+            user_id: user.id,
+            email: user.email,
+            vorname: meta.vorname || '',
+            nachname: meta.nachname || '',
+            telefon: meta.telefon || null,
+            status: 'aktiv'
+        }])
+        .select('id, kundenummer')
+        .single();
+
+    if (createError) {
+        throw new Error(`Kunden-Daten nicht gefunden und konnten nicht erstellt werden: ${createError.message}`);
+    }
+
+    activeKundeId = createdKunde.id;
+    return createdKunde;
+}
+
+function normalizeZylinderSystemIdForSupabase(systemId) {
+    const numericId = Number(systemId);
+    return Number.isInteger(numericId) ? numericId : null;
+}
+
+function buildSchliessplanPayload(kundeId, status = 'in_bearbeitung') {
+    const selectedSystem = findCylinderSystemById(userAnswers.cylinderSystemId);
+    return {
+        kunde_id: kundeId,
+        name: `${userAnswers.objekttyp || 'Schließplan'} - ${new Date().toLocaleDateString('de-DE')}`,
+        objekttyp: userAnswers.objekttyp || null,
+        anlagentyp: userAnswers.anlagentyp || null,
+        qualitaet: userAnswers.qualitaet || null,
+        technologie: userAnswers.technologie || null,
+        zylinder_system_id: normalizeZylinderSystemIdForSupabase(userAnswers.cylinderSystemId),
+        zylinder_system_name: selectedSystem?.name || null,
+        plan_data: getSerializablePlanData(),
+        user_answers: { ...(userAnswers || {}) },
+        status,
+        aktualisiert_am: new Date().toISOString()
+    };
+}
+
+async function persistCurrentPlan(options = {}) {
+    const { kundeId: explicitKundeId, status = 'in_bearbeitung', includeMediathek = false } = options;
+
+    if (!planData || !Array.isArray(planData.rows) || planData.rows.length === 0) {
+        return null;
+    }
+
+    const supabaseClient = await ensureSupabaseReady();
+    if (!supabaseClient) {
+        throw new Error('Supabase Client nicht verfügbar');
+    }
+
+    let kundeId = explicitKundeId || activeKundeId;
+    if (!kundeId) {
+        const kunde = await getKundeForCurrentUser(supabaseClient);
+        kundeId = kunde.id;
+    }
+
+    activeKundeId = kundeId;
+    const payload = buildSchliessplanPayload(kundeId, status);
+    let savedPlan;
+
+    if (activeSchliessplanId) {
+        const { data, error } = await supabaseClient
+            .from('schliessplaene')
+            .update(payload)
+            .eq('id', activeSchliessplanId)
+            .select()
+            .single();
+
+        if (error) {
+            throw new Error(`Fehler beim Aktualisieren des Schließplans: ${error.message}`);
+        }
+        savedPlan = data;
+    } else {
+        const { data, error } = await supabaseClient
+            .from('schliessplaene')
+            .insert([payload])
+            .select()
+            .single();
+
+        if (error) {
+            throw new Error(`Fehler beim Speichern des Schließplans: ${error.message}`);
+        }
+        savedPlan = data;
+        activeSchliessplanId = data.id;
+    }
+
+    if (includeMediathek) {
+        try {
+            await saveToMediathek(supabaseClient, savedPlan.id, kundeId, savedPlan);
+        } catch (error) {
+            console.warn('⚠️ Mediathek-Export fehlgeschlagen, Plan wurde trotzdem gespeichert:', error);
+        }
+    }
+
+    lastRemoteSaveSignature = getCurrentPlanSignature();
+    saveSessionToStorage();
+    return savedPlan;
+}
+
+async function flushAutoSave(options = {}) {
+    if (autoSaveInProgress) {
+        pendingAutoSave = true;
+        return;
+    }
+
+    const signature = getCurrentPlanSignature();
+    if (signature === lastRemoteSaveSignature && !options.force) {
+        setAutoSaveStatus('success', 'Alle Änderungen gespeichert.');
+        return;
+    }
+
+    autoSaveInProgress = true;
+    pendingAutoSave = false;
+    setAutoSaveStatus('saving', 'Speichere automatisch...');
+
+    try {
+        await persistCurrentPlan({ status: 'in_bearbeitung', includeMediathek: true });
+        setAutoSaveStatus('success', `Automatisch gespeichert um ${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}.`);
+    } catch (error) {
+        console.warn('⚠️ Auto-Save fehlgeschlagen:', error);
+        setAutoSaveStatus('error', `Auto-Save fehlgeschlagen: ${error.message}`);
+    } finally {
+        autoSaveInProgress = false;
+        if (pendingAutoSave) {
+            scheduleAutoSave('pending-change');
+        }
+    }
+}
+
+function scheduleAutoSave(reason = 'change') {
+    if (!planData || !Array.isArray(planData.rows) || planData.rows.length === 0) return;
+    clearTimeout(autoSaveTimer);
+    setAutoSaveStatus('pending', 'Änderung erkannt. Auto-Save startet gleich...');
+    autoSaveTimer = setTimeout(() => {
+        flushAutoSave({ reason }).catch(err => console.warn('Auto-Save Fehler:', err));
+    }, AUTO_SAVE_DELAY_MS);
+}
+
+function markPlanDirty(reason = 'change') {
+    saveSessionToStorage();
+    if (!elements.schliessplanContainer || elements.schliessplanContainer.classList.contains('hidden')) {
+        return;
+    }
+
+    const saveContainer = document.getElementById('save-to-profile-container');
+    const canRemoteSave = activeKundeId || (saveContainer && !saveContainer.classList.contains('hidden'));
+    if (!canRemoteSave) {
+        return;
+    }
+
+    scheduleAutoSave(reason);
+}
+
 async function savePlanToCRM() {
-    // 1. Formular-Daten sammeln
     const vorname = document.getElementById('customer-vorname')?.value.trim();
     const nachname = document.getElementById('customer-nachname')?.value.trim();
     const email = document.getElementById('customer-email')?.value.trim();
     const telefon = document.getElementById('customer-telefon')?.value.trim();
-    
-    // Validierung
+
     if (!email || !vorname || !nachname) {
         showSaveStatus('error', 'Bitte füllen Sie alle Pflichtfelder aus.');
         return;
     }
-    
+
     if (!isValidEmail(email)) {
         showSaveStatus('error', 'Bitte geben Sie eine gültige E-Mail-Adresse ein.');
         return;
     }
-    
-    // 2. Speichern starten
+
     showSaveStatus('loading', 'Schließplan wird gespeichert...');
     const saveBtn = document.getElementById('save-plan-btn');
     if (saveBtn) saveBtn.disabled = true;
-    
+
     try {
-        // Stelle sicher, dass Supabase geladen ist
-        const supabaseClient = await ensureSupabaseReady();
-        
-        // 3. Kunde finden oder erstellen
         const kundeId = await findOrCreateKunde(email, vorname, nachname, telefon);
-        
-        // Hole Kundenummer für Anzeige
-        const { data: kundeInfo } = await supabaseClient
-            .from('kunden')
-            .select('kundenummer')
-            .eq('id', kundeId)
-            .single();
-        
-        // 4. Schließplan speichern
-        const selectedSystem = allCylinderSystems.find(s => s.id === userAnswers.cylinderSystemId);
-        
-        const schliessplanData = {
-            kunde_id: kundeId,
-            name: `${userAnswers.objekttyp || 'Schließplan'} - ${new Date().toLocaleDateString('de-DE')}`,
-            objekttyp: userAnswers.objekttyp,
-            anlagentyp: userAnswers.anlagentyp,
-            qualitaet: userAnswers.qualitaet,
-            technologie: userAnswers.technologie,
-            zylinder_system_id: userAnswers.cylinderSystemId,
-            zylinder_system_name: selectedSystem?.name,
-            plan_data: planData,
-            user_answers: userAnswers,
-            status: 'erstellt'
-        };
-        
-        const { data: planDataResult, error: planError } = await supabaseClient
-            .from('schliessplaene')
-            .insert([schliessplanData])
-            .select()
-            .single();
-        
-        if (planError) {
-            throw new Error(`Fehler beim Speichern des Schließplans: ${planError.message}`);
-        }
-        
-        console.log('✅ Schließplan gespeichert:', planDataResult);
-        
-        // 5. Automatisch in Mediathek speichern
-        try {
-            showSaveStatus('loading', 'Schließplan wird in Mediathek gespeichert...');
-            await saveToMediathek(supabaseClient, planDataResult.id, kundeId, planDataResult);
-            console.log('✅ Schließplan erfolgreich in Mediathek gespeichert');
-        } catch (mediathekError) {
-            console.warn('⚠️ Fehler beim Speichern in Mediathek (Plan ist trotzdem gespeichert):', mediathekError);
-            // Fehler wird nicht weitergegeben, da der Plan bereits gespeichert ist
-        }
-        
-        // 6. Erfolgsmeldung
-        const kundenummer = kundeInfo?.kundenummer || 'Wird generiert...';
-        showSaveStatus('success', `Schließplan erfolgreich gespeichert und in Mediathek verfügbar! ${kundenummer ? 'Kundenummer: ' + kundenummer : ''}`);
-        
-        // Optional: Weiterleitung oder Dialog
-        setTimeout(() => {
-            alert(`Vielen Dank, ${vorname}! Ihr Schließplan wurde gespeichert und ist jetzt in Ihrer Mediathek verfügbar.${kundenummer ? ' Ihre Kundenummer: ' + kundenummer : ''}`);
-        }, 1000);
-        
+        activeKundeId = kundeId;
+        const savedPlan = await persistCurrentPlan({ kundeId, status: 'erstellt', includeMediathek: true });
+
+        showSaveStatus('success', 'Schließplan erfolgreich gespeichert und in der Mediathek versioniert.');
+        console.log('✅ Schließplan gespeichert:', savedPlan);
     } catch (error) {
         console.error('❌ Fehler beim Speichern:', error);
         showSaveStatus('error', `Fehler: ${error.message}`);
-        
-        // Detaillierte Fehlerinformationen in Console
-        if (error.message.includes('RLS')) {
-            console.error('💡 Hinweis: Prüfen Sie die Row Level Security Policies in Supabase');
-        }
     } finally {
         if (saveBtn) saveBtn.disabled = false;
     }
 }
 
 function skipCustomerForm() {
-    if (confirm('Möchten Sie wirklich ohne Speichern fortfahren? Der Schließplan geht verloren.')) {
-        console.log('Schließplan wurde nicht gespeichert');
+    if (confirm('Moechten Sie wirklich ohne Speichern fortfahren? Der Schliessplan geht verloren.')) {
+        const customerFormModal = document.getElementById('customer-form-modal');
+        if (customerFormModal) customerFormModal.classList.add('hidden');
+        console.log('Schliessplan wurde nicht gespeichert');
         // Optional: Als PDF exportieren oder anderweitig speichern
     }
 }
@@ -2459,85 +3172,26 @@ function skipCustomerForm() {
 // Speichere Schließplan direkt ins Profil (für angemeldete Benutzer)
 async function savePlanToProfile() {
     const saveBtn = document.getElementById('save-to-profile-btn');
+    const originalHtml = saveBtn ? saveBtn.innerHTML : '';
+
     if (saveBtn) {
         saveBtn.disabled = true;
         saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin text-xl"></i><span class="text-lg">Speichere...</span>';
     }
-    
+
     try {
-        const supabaseClient = await ensureSupabaseReady();
-        if (!supabaseClient) {
-            throw new Error('Supabase Client nicht verfügbar');
-        }
-        
-        // Hole aktuellen Benutzer
-        const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-        if (userError || !user) {
-            throw new Error('Sie müssen angemeldet sein, um zu speichern');
-        }
-        
-        // Hole Kunden-Daten
-        const { data: kundeData, error: kundeError } = await supabaseClient
-            .from('kunden')
-            .select('id, kundenummer')
-            .eq('user_id', user.id)
-            .single();
-        
-        if (kundeError || !kundeData) {
-            throw new Error('Kunden-Daten nicht gefunden. Bitte kontaktieren Sie den Support.');
-        }
-        
-        // Schließplan speichern
-        const selectedSystem = allCylinderSystems.find(s => s.id === userAnswers.cylinderSystemId);
-        
-        const schliessplanData = {
-            kunde_id: kundeData.id,
-            name: `${userAnswers.objekttyp || 'Schließplan'} - ${new Date().toLocaleDateString('de-DE')}`,
-            objekttyp: userAnswers.objekttyp,
-            anlagentyp: userAnswers.anlagentyp,
-            qualitaet: userAnswers.qualitaet,
-            technologie: userAnswers.technologie,
-            zylinder_system_id: userAnswers.cylinderSystemId,
-            zylinder_system_name: selectedSystem?.name,
-            plan_data: planData,
-            user_answers: userAnswers,
-            status: 'erstellt'
-        };
-        
-        const { data: planDataResult, error: planError } = await supabaseClient
-            .from('schliessplaene')
-            .insert([schliessplanData])
-            .select()
-            .single();
-        
-        if (planError) {
-            throw new Error(`Fehler beim Speichern: ${planError.message}`);
-        }
-        
-        console.log('✅ Schließplan in Datenbank gespeichert:', planDataResult);
-        
-        // AUTOMATISCH HTML in Mediathek speichern (immer ausführen)
-        console.log('📤 Starte automatischen Export in Mediathek...');
-        try {
-            const mediathekResult = await saveToMediathek(supabaseClient, planDataResult.id, kundeData.id, planDataResult);
-            console.log('✅ Schließplan HTML erfolgreich automatisch in Mediathek exportiert:', mediathekResult);
-            console.log('📁 HTML-Datei URL:', mediathekResult?.fileUrl);
-        } catch (mediathekError) {
-            console.error('❌ Fehler beim automatischen Export in Mediathek:', mediathekError);
-            // Fehler anzeigen, aber Speicherung in DB war erfolgreich
-            alert(`Hinweis: Der Plan wurde gespeichert, aber der automatische HTML-Export in die Mediathek ist fehlgeschlagen: ${mediathekError.message}`);
-        }
-        
-        // Zeige Erfolgs-Overlay mit coolen Effekt
+        const savedPlan = await persistCurrentPlan({ status: 'erstellt', includeMediathek: true });
+        console.log('✅ Schließplan ins Profil gespeichert:', savedPlan);
+        setAutoSaveStatus('success', 'Manuell gespeichert und HTML-Version in der Mediathek abgelegt.');
         showSuccessOverlay();
-        
     } catch (error) {
         console.error('❌ Fehler beim Speichern:', error);
         alert(`Fehler beim Speichern: ${error.message}`);
+        setAutoSaveStatus('error', `Speichern fehlgeschlagen: ${error.message}`);
     } finally {
         if (saveBtn) {
             saveBtn.disabled = false;
-            saveBtn.innerHTML = '<i class="fas fa-save text-xl"></i><span class="text-lg">Schließplan ins Profil speichern</span>';
+            saveBtn.innerHTML = originalHtml || '<i class="fas fa-save text-xl"></i><span class="text-lg">Schließplan ins Profil speichern</span>';
         }
     }
 }
@@ -2634,7 +3288,10 @@ function generateSchliessplanHTML() {
             if (typSelect) row.typ = typSelect.value;
             
             const systemSelect = rowElement.querySelector('select[onchange*="systemId"]');
-            if (systemSelect) row.systemId = parseInt(systemSelect.value) || row.systemId;
+            if (systemSelect) {
+                const systemMatch = findCylinderSystemById(systemSelect.value);
+                row.systemId = systemMatch ? systemMatch.id : systemSelect.value;
+            }
             
             const techSelect = rowElement.querySelector('select[onchange*="techType"]');
             if (techSelect) row.techType = techSelect.value;
@@ -2661,7 +3318,7 @@ function generateSchliessplanHTML() {
     });
 
     const getSystemName = (systemId) => {
-        const system = allCylinderSystems.find(s => s.id === systemId);
+        const system = findSchliessplanSystemOption(systemId);
         return system ? system.name : 'Unbekannt';
     };
 
@@ -2676,10 +3333,11 @@ function generateSchliessplanHTML() {
 
     let tableRows = '';
     rows.forEach(row => {
-        const systemName = getSystemName(row.systemId);
+        const selectedSystem = findSchliessplanSystemOption(row.systemId);
+        const systemName = selectedSystem ? selectedSystem.name : getSystemName(row.systemId);
         const functionNames = getFunctionNames(row.funktionen);
         const techType = row.techType || 'mechanisch';
-        const bgColor = techType === 'elektronisch' ? '#e0f2fe' : 'transparent';
+        const bgColor = selectedSystem ? hexToRgba(selectedSystem.color, 0.16) : (techType === 'elektronisch' ? '#e0f2fe' : 'transparent');
 
         let matrixCells = '';
         planData.keys.forEach((key, keyIndex) => {
@@ -2719,7 +3377,7 @@ function generateSchliessplanHTML() {
     
     let keyHeaders = '';
     planData.keys.forEach(key => {
-        keyHeaders += `<th style="border: 1px solid #ccc; padding: 8px; background-color: #1a3d5c; color: white; transform: rotate(-90deg); white-space: nowrap; min-width: 50px; height: 150px;">${key.name}</th>`;
+        keyHeaders += `<th style="border: 1px solid #ccc; padding: 8px; background-color: #203d5d; color: white; transform: rotate(-90deg); white-space: nowrap; min-width: 50px; height: 150px;">${key.name}</th>`;
     });
 
     // HTML-Dokument erstellen
@@ -2732,12 +3390,12 @@ function generateSchliessplanHTML() {
     <style>
         body { font-family: 'Inter', Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
         .container { background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 1400px; margin: 0 auto; }
-        h1 { color: #1a3d5c; text-align: center; margin-bottom: 30px; font-size: 28px; }
-        .info-box { background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid #1a3d5c; }
+        h1 { color: #203d5d; text-align: center; margin-bottom: 30px; font-size: 28px; }
+        .info-box { background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid #203d5d; }
         .info-box p { margin: 5px 0; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
-        th { background-color: #1a3d5c; color: white; padding: 10px 8px; text-align: center; border: 1px solid #ccc; font-weight: bold; }
-        .header-main { background-color: #2a4d6c; font-size: 14px; padding: 12px; }
+        th { background-color: #203d5d; color: white; padding: 10px 8px; text-align: center; border: 1px solid #ccc; font-weight: bold; }
+        .header-main { background-color: #1a344f; font-size: 14px; padding: 12px; }
         td { border: 1px solid #ccc; padding: 8px; }
         @media print { body { background-color: white; margin: 0; } .container { box-shadow: none; padding: 10px; } }
     </style>
@@ -2841,7 +3499,11 @@ async function saveToMediathek(supabaseClient, schliessplanId, kundeId, schliess
         console.log('✅ Metadaten gespeichert:', mediathekEntry);
         
         // 6. Schließplan mit Mediathek-ID verknüpfen
+        const previousExportDateien = Array.isArray(schliessplanData.export_dateien)
+            ? schliessplanData.export_dateien
+            : [];
         const exportDateien = [
+            ...previousExportDateien,
             {
                 typ: 'html',
                 url: publicUrl,
@@ -2930,6 +3592,7 @@ function exportSchliessplanToHTML() {
 
 // --- AUTH SCREEN FUNKTIONEN ---
 function showAuthScreen() {
+    if (!AUTH_SELECTION_SCREEN_ENABLED) return;
     const authScreen = document.getElementById('auth-screen');
     if (authScreen) {
         authScreen.classList.remove('hidden');
@@ -3229,7 +3892,7 @@ async function handleRegister(event) {
         showRegisterStatus('success', 'Registrierung erfolgreich! Sie werden jetzt eingeloggt...');
         
         // Weiterleitung zu Dashboard
-        window.location.href = '/dashboard';
+        window.location.href = 'dashboard.html';
         
     } catch (error) {
         console.error('❌ Fehler bei der Registrierung:', error);
@@ -3275,7 +3938,7 @@ function initializeAuthScreen() {
         guestBtn.addEventListener('click', () => {
             console.log('👤 Als Gast fortfahren geklickt');
             // Weiterleitung zu /start
-            window.location.href = '/start';
+            window.location.href = 'start.html';
         });
     }
     
@@ -3319,6 +3982,49 @@ function initializeAuthScreen() {
 
     if (loginForm) {
         loginForm.addEventListener('submit', handleLogin);
+    }
+
+    const headerLoginModalBtn = document.getElementById('header-open-login-modal-btn');
+    const headerRegisterModalBtn = document.getElementById('header-open-register-modal-btn');
+    const headerAuthMenuBtn = document.getElementById('header-auth-menu-btn');
+    const headerAuthDropdown = document.getElementById('header-auth-dropdown');
+    const customerRegisterBtn = document.getElementById('customer-open-register-btn');
+
+    const closeHeaderAuthDropdown = () => {
+        if (headerAuthDropdown) headerAuthDropdown.classList.add('hidden');
+        if (headerAuthMenuBtn) headerAuthMenuBtn.setAttribute('aria-expanded', 'false');
+    };
+
+    if (headerAuthMenuBtn && headerAuthDropdown) {
+        headerAuthMenuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            headerAuthDropdown.classList.toggle('hidden');
+            headerAuthMenuBtn.setAttribute(
+                'aria-expanded',
+                String(!headerAuthDropdown.classList.contains('hidden'))
+            );
+        });
+        document.addEventListener('click', (e) => {
+            if (!headerAuthMenuBtn.contains(e.target) && !headerAuthDropdown.contains(e.target)) {
+                closeHeaderAuthDropdown();
+            }
+        });
+    }
+
+    if (headerLoginModalBtn) {
+        headerLoginModalBtn.addEventListener('click', () => {
+            closeHeaderAuthDropdown();
+            showLoginModal();
+        });
+    }
+    if (headerRegisterModalBtn) {
+        headerRegisterModalBtn.addEventListener('click', () => {
+            closeHeaderAuthDropdown();
+            showRegisterModal();
+        });
+    }
+    if (customerRegisterBtn) {
+        customerRegisterBtn.addEventListener('click', () => showRegisterModal());
     }
 }
 
@@ -3390,7 +4096,7 @@ async function handleLogin(event) {
         showLoginStatus('success', 'Erfolgreich eingeloggt!');
         
         // Weiterleitung zu Dashboard
-        window.location.href = '/dashboard';
+        window.location.href = 'dashboard.html';
         
     } catch (error) {
         console.error('❌ Fehler beim Login:', error);
@@ -3420,6 +4126,16 @@ if (elements.addKeyBtn) {
 }
 if (elements.backToQuestionsBtn) {
     elements.backToQuestionsBtn.addEventListener('click', initializeQuestionnaire);
+}
+const openCustomerFormBtn = document.getElementById('open-customer-form-btn');
+if (openCustomerFormBtn) {
+    openCustomerFormBtn.addEventListener('click', async () => {
+        const customerFormModal = document.getElementById('customer-form-modal');
+        if (!customerFormModal) return;
+        customerFormModal.classList.remove('hidden');
+        await checkAndShowLoginOption();
+        document.getElementById('customer-vorname')?.focus();
+    });
 }
 
 // PDF-Export Button Event Listener
@@ -3463,6 +4179,20 @@ if (document.readyState === 'loading') {
 } else {
     checkAuthOnCustomerFormOpen();
 }
+
+window.addEventListener('beforeunload', () => {
+    saveSessionToStorage();
+});
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+        saveSessionToStorage();
+        clearTimeout(autoSaveTimer);
+        if (activeSchliessplanId || activeKundeId) {
+            flushAutoSave({ force: false }).catch(err => console.warn('Auto-Save beim Verlassen fehlgeschlagen:', err));
+        }
+    }
+});
 
 // HTML-Export Button Event Listener
 document.addEventListener('DOMContentLoaded', () => {
@@ -3801,10 +4531,41 @@ function debugMatchCalculation(userAnswers, cylinder) {
 }
 
 // --- INITIALIZATION ---
+let applicationStartupStarted = false;
+
+function initializeIntroFilm() {
+    const loadingScreen = document.getElementById('loading-screen');
+    const skipButton = document.getElementById('intro-skip-btn');
+
+    if (!loadingScreen || !skipButton || skipButton.dataset.bound === 'true') {
+        return;
+    }
+
+    skipButton.dataset.bound = 'true';
+    skipButton.dataset.ready = 'false';
+    skipButton.addEventListener('click', () => {
+        if (skipButton.dataset.ready === 'true') {
+            loadingStatus.startDoorUnlockSequence();
+            return;
+        }
+
+        loadingScreen.classList.add('intro-compact');
+        skipButton.textContent = 'Film reduziert';
+        skipButton.setAttribute('aria-pressed', 'true');
+    });
+}
+
 // Warte bis DOM geladen ist
 async function startApplication() {
+    if (applicationStartupStarted) {
+        console.debug('Schliessplan startup skipped because it is already running');
+        return;
+    }
+    applicationStartupStarted = true;
+
     // Loading Screen initialisieren
     loadingStatus.init();
+    initializeIntroFilm();
     
     // Supabase laden (mit Status-Update) - Warte kurz, damit Supabase Zeit hat zu starten
     loadingStatus.updateStatus('supabase', 'loading');
@@ -3824,7 +4585,7 @@ async function startApplication() {
         console.warn('⚠️ Supabase konnte nicht geladen werden, aber die Anwendung läuft weiter:', error.message);
         loadingStatus.updateStatus('supabase', 'error', error.message || 'Timeout oder Verbindungsfehler');
         // Setze Supabase auf null, damit die App weiterlaufen kann
-        supabase = null;
+        schliessplanSb = null;
         supabaseInitialized = false;
     }
     
@@ -3857,7 +4618,10 @@ async function startApplication() {
 async function showUserMenu(user) {
     const userMenuContainer = document.getElementById('user-menu-container');
     if (!userMenuContainer) return;
-    
+
+    const headerAuth = document.getElementById('header-auth-actions');
+    if (headerAuth) headerAuth.classList.add('hidden');
+
     userMenuContainer.classList.remove('hidden');
     
     // Lade Benutzerdaten
@@ -3907,43 +4671,165 @@ function hideUserMenu() {
     if (userMenuContainer) {
         userMenuContainer.classList.add('hidden');
     }
+    const headerAuth = document.getElementById('header-auth-actions');
+    if (headerAuth) headerAuth.classList.remove('hidden');
 }
 
 // Stelle Session wieder her
-function restoreSession(sessionData) {
-    if (sessionData.userAnswers) {
-        Object.assign(userAnswers, sessionData.userAnswers);
+function getSerializablePlanData() {
+    return {
+        ...(planData || { rows: [], keys: [] }),
+        currentQuestionIndex,
+        savedAt: new Date().toISOString()
+    };
+}
+
+function getCurrentPlanSnapshot() {
+    return {
+        userAnswers: { ...(userAnswers || {}) },
+        planData: getSerializablePlanData(),
+        currentQuestionIndex,
+        schliessplanId: activeSchliessplanId,
+        kundeId: activeKundeId,
+        timestamp: new Date().toISOString()
+    };
+}
+
+function normalizeRestoredPlanData(rawPlanData) {
+    const restoredPlanData = rawPlanData && typeof rawPlanData === 'object'
+        ? { ...rawPlanData }
+        : { rows: [], keys: [] };
+
+    restoredPlanData.rows = Array.isArray(restoredPlanData.rows) ? restoredPlanData.rows : [];
+    restoredPlanData.keys = Array.isArray(restoredPlanData.keys) ? restoredPlanData.keys : [];
+    return restoredPlanData;
+}
+
+function restoreSession(sessionData, options = {}) {
+    if (!sessionData || typeof sessionData !== 'object') {
+        return false;
     }
-    if (sessionData.planData) {
-        planData = sessionData.planData;
+
+    userAnswers = { ...(sessionData.userAnswers || sessionData.user_answers || {}) };
+    planData = normalizeRestoredPlanData(sessionData.planData || sessionData.plan_data);
+
+    const restoredQuestionIndex =
+        sessionData.currentQuestionIndex ??
+        sessionData.current_question_index ??
+        planData.currentQuestionIndex ??
+        planData._meta?.currentQuestionIndex ??
+        0;
+    currentQuestionIndex = Number.isFinite(Number(restoredQuestionIndex)) ? Number(restoredQuestionIndex) : 0;
+
+    activeSchliessplanId = sessionData.schliessplanId || sessionData.id || activeSchliessplanId || null;
+    activeKundeId = sessionData.kundeId || sessionData.kunde_id || activeKundeId || null;
+    lastRemoteSaveSignature = getCurrentPlanSignature();
+
+    console.log('✅ Session wiederhergestellt', {
+        activeSchliessplanId,
+        activeKundeId,
+        rows: planData.rows.length,
+        keys: planData.keys.length,
+        currentQuestionIndex
+    });
+
+    if (options.render === false) {
+        saveSessionToStorage();
+        return true;
     }
-    if (sessionData.currentQuestionIndex !== undefined) {
-        currentQuestionIndex = sessionData.currentQuestionIndex;
-    }
-    
-    console.log('✅ Session wiederhergestellt');
-    
-    // Starte Fragebogen mit wiederhergestellter Position
-    if (currentQuestionIndex > 0 && questionsData && questionsData.length > 0) {
+
+    elements.questionnaireContainer.classList.toggle('hidden', planData.rows.length > 0);
+    elements.schliessplanContainer.classList.toggle('hidden', planData.rows.length === 0);
+
+    if (planData.rows.length > 0) {
+        showSchliessplan().catch(err => console.error('❌ Wiederhergestellter Schließplan konnte nicht angezeigt werden:', err));
+    } else if (questionsData && questionsData.length > 0) {
         renderCurrentQuestion();
-    } else {
-        initializeQuestionnaire();
     }
+
+    saveSessionToStorage();
+    return true;
 }
 
 // Speichere Session in localStorage
 function saveSessionToStorage() {
     try {
-        const sessionData = {
-            userAnswers: userAnswers,
-            planData: planData,
-            currentQuestionIndex: currentQuestionIndex,
-            timestamp: new Date().toISOString()
-        };
-        localStorage.setItem('lastSchliessplanSession', JSON.stringify(sessionData));
+        localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(getCurrentPlanSnapshot()));
     } catch (error) {
         console.warn('⚠️ Fehler beim Speichern der Session:', error);
     }
+}
+
+async function loadSchliessplanSessionById(planId) {
+    const supabaseClient = await ensureSupabaseReady();
+    if (!supabaseClient || !planId) return null;
+
+    const { data, error } = await supabaseClient
+        .from('schliessplaene')
+        .select('id, kunde_id, user_answers, plan_data, status')
+        .eq('id', planId)
+        .single();
+
+    if (error) {
+        console.warn('⚠️ Gespeicherter Schließplan konnte nicht geladen werden:', error);
+        return null;
+    }
+
+    return {
+        id: data.id,
+        schliessplanId: data.id,
+        kundeId: data.kunde_id,
+        userAnswers: data.user_answers || {},
+        planData: data.plan_data || { rows: [], keys: [] },
+        currentQuestionIndex: data.plan_data?.currentQuestionIndex || 0
+    };
+}
+
+async function consumeStartupSessionIntent() {
+    if (sessionStorage.getItem(START_NEW_CONFIG_KEY) === 'true') {
+        sessionStorage.removeItem(START_NEW_CONFIG_KEY);
+        sessionStorage.removeItem(RESUME_SESSION_KEY);
+        sessionStorage.removeItem(RESUME_PLAN_ID_KEY);
+        sessionStorage.removeItem('continueSession');
+        sessionStorage.removeItem('lastSessionData');
+        sessionStorage.removeItem('viewPlanId');
+        activeSchliessplanId = null;
+        activeKundeId = null;
+        return false;
+    }
+
+    const resumeRaw = sessionStorage.getItem(RESUME_SESSION_KEY);
+    if (resumeRaw) {
+        sessionStorage.removeItem(RESUME_SESSION_KEY);
+        try {
+            return restoreSession(JSON.parse(resumeRaw));
+        } catch (error) {
+            console.warn('⚠️ Resume-Daten konnten nicht gelesen werden:', error);
+        }
+    }
+
+    const resumePlanId = sessionStorage.getItem(RESUME_PLAN_ID_KEY) || sessionStorage.getItem('viewPlanId');
+    if (resumePlanId) {
+        sessionStorage.removeItem(RESUME_PLAN_ID_KEY);
+        sessionStorage.removeItem('viewPlanId');
+        const sessionData = await loadSchliessplanSessionById(resumePlanId);
+        if (sessionData) return restoreSession(sessionData);
+    }
+
+    if (sessionStorage.getItem('continueSession') === 'true') {
+        sessionStorage.removeItem('continueSession');
+        const raw = sessionStorage.getItem('lastSessionData') || localStorage.getItem(LOCAL_SESSION_KEY);
+        sessionStorage.removeItem('lastSessionData');
+        if (raw) {
+            try {
+                return restoreSession(JSON.parse(raw));
+            } catch (error) {
+                console.warn('⚠️ Lokale Session konnte nicht gelesen werden:', error);
+            }
+        }
+    }
+
+    return false;
 }
 
 // Zeige Profil-Modal
@@ -4021,7 +4907,7 @@ async function handleLogout() {
                 hideProfileModal();
                 
                 // Navigiere zur Login-Seite
-                window.location.href = '/login';
+                window.location.href = 'login.html';
             }
         }
     } catch (error) {
@@ -4102,7 +4988,7 @@ async function checkAuthState() {
             if (!error && user) {
                 // Eingeloggt auf Hauptseite → Weiterleitung zu Dashboard
                 if (currentPath === '/' || currentPath === '/index.html') {
-                    window.location.href = '/dashboard';
+                    window.location.href = 'dashboard.html';
                     return;
                 }
                 console.log('✅ Benutzer bereits eingeloggt:', user.id);
