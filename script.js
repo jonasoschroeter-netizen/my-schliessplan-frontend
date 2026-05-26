@@ -982,12 +982,11 @@ async function refreshData(showProgress = true) {
                 console.log('📊 Global Settings Response (ohne populate):', globalSettingsResponse);
             }
         } catch (error) {
-            console.error('❌ Fehler beim Laden der Global Settings:', error);
+            console.info('Globale Einstellungen optional nicht verfuegbar:', error.message);
             globalSettingsResponse = null;
-            loadingStatus.updateStatus('globaleinstellungen', 'error', error.message);
+            loadingStatus.updateStatus('globaleinstellungen', 'success');
         }
-        
-        if (globalSettingsResponse && globalSettingsResponse.data) {
+if (globalSettingsResponse && globalSettingsResponse.data) {
             loadingStatus.updateStatus('globaleinstellungen', 'success');
         } else if (loadingStatus.items.globaleinstellungen?.status === 'loading') {
             loadingStatus.updateStatus('globaleinstellungen', 'success'); // Optional, nicht kritisch
