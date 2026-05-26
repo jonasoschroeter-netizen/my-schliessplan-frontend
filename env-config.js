@@ -78,27 +78,111 @@
         console.info('[Schließplan] Supabase:', mode, pick.url);
     }
 
-    /** Nur genutzt, wenn explizit strapi=cloud oder localStorage-Modus cloud */
+    /** Strapi CMS selection. Supports local, cloud and custom LAN server URLs. */
     var STRAPI_CLOUD = 'https://brave-basketball-98ec57b285.strapiapp.com';
     var STRAPI_LOCAL = 'http://127.0.0.1:1337';
+    var STRAPI_CUSTOM_STORAGE_KEY = 'schliessplan-strapi-custom-url';
+
+    function normalizeStrapiUrl(value) {
+        if (!value) return null;
+        var url = String(value).trim();
+        if (!url) return null;
+        if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
+        return url.replace(/\/+$/, '');
+    }
+
+    function setStoredValue(key, value) {
+        try {
+            if (typeof localStorage !== 'undefined') localStorage.setItem(key, value);
+        } catch (error) {
+            // Storage can be blocked in restrictive browser contexts.
+        }
+    }
+
+    function removeStoredValue(key) {
+        try {
+            if (typeof localStorage !== 'undefined') localStorage.removeItem(key);
+        } catch (error) {
+            // Storage can be blocked in restrictive browser contexts.
+        }
+    }
 
     var qpStrapi = params && params.get('strapi');
+    var qpStrapiUrl =
+        params &&
+        (params.get('strapiUrl') || params.get('strapi-url') || params.get('strapiServer'));
     var strapiStored = getStoredMode('schliessplan-strapi-mode');
+    var strapiStoredCustomUrl = normalizeStrapiUrl(getStoredMode(STRAPI_CUSTOM_STORAGE_KEY));
+    var explicitCustomUrl = normalizeStrapiUrl(qpStrapiUrl);
 
-    var strapiMode = 'local';
-    if (qpStrapi === 'cloud' || qpStrapi === 'c') {
+    if (
+        !explicitCustomUrl &&
+        qpStrapi &&
+        qpStrapi !== 'cloud' &&
+        qpStrapi !== 'c' &&
+        qpStrapi !== 'local' &&
+        qpStrapi !== 'l' &&
+        qpStrapi !== 'server' &&
+        qpStrapi !== 'custom'
+    ) {
+        explicitCustomUrl = normalizeStrapiUrl(qpStrapi);
+    }
+
+    var isHttpsPage =
+        typeof location !== 'undefined' && location.protocol === 'https:';
+    var isNetlifyPage =
+        typeof location !== 'undefined' &&
+        /(^|\.)netlify\.app$/i.test(location.hostname || '');
+    var shouldDefaultStrapiToCloud = isHttpsPage || isNetlifyPage || isFileProtocol;
+
+    var strapiMode = shouldDefaultStrapiToCloud ? 'cloud' : 'local';
+    var strapiUrl = shouldDefaultStrapiToCloud ? STRAPI_CLOUD : STRAPI_LOCAL;
+
+    if (explicitCustomUrl) {
+        strapiMode = 'server';
+        strapiUrl = explicitCustomUrl;
+        setStoredMode('schliessplan-strapi-mode', 'server');
+        setStoredValue(STRAPI_CUSTOM_STORAGE_KEY, explicitCustomUrl);
+    } else if (qpStrapi === 'cloud' || qpStrapi === 'c') {
         strapiMode = 'cloud';
+        strapiUrl = STRAPI_CLOUD;
         setStoredMode('schliessplan-strapi-mode', 'cloud');
     } else if (qpStrapi === 'local' || qpStrapi === 'l') {
         strapiMode = 'local';
+        strapiUrl = STRAPI_LOCAL;
         setStoredMode('schliessplan-strapi-mode', 'local');
-    } else if (strapiStored === 'cloud') strapiMode = 'cloud';
-    else if (strapiStored === 'local') strapiMode = 'local';
+    } else if ((qpStrapi === 'server' || qpStrapi === 'custom') && strapiStoredCustomUrl) {
+        strapiMode = 'server';
+        strapiUrl = strapiStoredCustomUrl;
+        setStoredMode('schliessplan-strapi-mode', 'server');
+    } else if (strapiStored === 'cloud') {
+        strapiMode = 'cloud';
+        strapiUrl = STRAPI_CLOUD;
+    } else if (strapiStored === 'server' && strapiStoredCustomUrl) {
+        strapiMode = 'server';
+        strapiUrl = strapiStoredCustomUrl;
+    } else if (strapiStored === 'local' && !shouldDefaultStrapiToCloud) {
+        strapiMode = 'local';
+        strapiUrl = STRAPI_LOCAL;
+    } else {
+        if (strapiStored === 'server' && !strapiStoredCustomUrl) {
+            removeStoredValue('schliessplan-strapi-mode');
+        }
+        strapiMode = shouldDefaultStrapiToCloud ? 'cloud' : 'local';
+        strapiUrl = shouldDefaultStrapiToCloud ? STRAPI_CLOUD : STRAPI_LOCAL;
+    }
 
-    window.__SCHLIESSPLAN_STRAPI_URL__ =
-        strapiMode === 'cloud' ? STRAPI_CLOUD : STRAPI_LOCAL;
+    if (isHttpsPage && /^http:\/\//i.test(strapiUrl) && typeof console !== 'undefined' && console.warn) {
+        console.warn(
+            '[Schliessplan] HTTPS-Seite nutzt eine HTTP-Strapi-URL. Browser koennen das als Mixed Content blockieren:',
+            strapiUrl
+        );
+    }
+
+    window.__SCHLIESSPLAN_STRAPI_MODE__ = strapiMode;
+    window.__SCHLIESSPLAN_STRAPI_URL__ = strapiUrl;
 
     if (typeof console !== 'undefined' && console.info) {
-        console.info('[Schließplan] Strapi:', strapiMode, window.__SCHLIESSPLAN_STRAPI_URL__);
+        console.info('[Schliessplan] Strapi:', strapiMode, window.__SCHLIESSPLAN_STRAPI_URL__);
     }
 })();

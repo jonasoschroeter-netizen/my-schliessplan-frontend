@@ -242,35 +242,26 @@ const loadingStatus = {
             container.appendChild(itemElement);
         }
         
+        const status = item.status || 'idle';
         let icon = '';
-        let textColor = '';
-        let bgColor = '';
-        
-        if (item.status === 'success') {
-            icon = '<i class="fas fa-check-circle text-green-500"></i>';
-            textColor = 'text-green-700';
-            bgColor = 'bg-green-50 border-green-200';
-        } else if (item.status === 'error') {
-            icon = '<i class="fas fa-times-circle text-red-500"></i>';
-            textColor = 'text-red-700';
-            bgColor = 'bg-red-50 border-red-200';
-        } else if (item.status === 'loading') {
-            icon = '<i class="fas fa-spinner fa-spin text-blue-500"></i>';
-            textColor = 'text-blue-700';
-            bgColor = 'bg-blue-50 border-blue-200';
+
+        if (status === 'success') {
+            icon = '<i class="fas fa-check"></i>';
+        } else if (status === 'error') {
+            icon = '<i class="fas fa-xmark"></i>';
+        } else if (status === 'loading') {
+            icon = '<i class="fas fa-spinner fa-spin"></i>';
         } else {
-            icon = '<i class="fas fa-circle text-gray-400"></i>';
-            textColor = 'text-gray-500';
-            bgColor = 'bg-gray-50 border-gray-200';
+            icon = '<i class="fas fa-circle"></i>';
         }
-        
-        itemElement.className = `flex items-center justify-between p-3 ${bgColor} rounded-lg border`;
+
+        itemElement.className = `intro-status-item intro-status-${status}`;
         itemElement.innerHTML = `
-            <div class="flex items-center space-x-3">
-                <span class="text-xl">${icon}</span>
-                <span class="${textColor} font-medium">${item.name}</span>
+            <div class="intro-status-main">
+                <span class="intro-status-icon">${icon}</span>
+                <span class="intro-status-name">${item.name}</span>
             </div>
-            ${item.error ? `<span class="text-xs text-red-600">${item.error}</span>` : ''}
+            ${item.error ? `<span class="intro-status-error-text">${item.error}</span>` : ''}
         `;
     },
     
@@ -433,7 +424,7 @@ const loadingStatus = {
             skipButton.textContent = 'Tuer geoeffnet';
         }
 
-        setTimeout(() => this.hideLoadingScreen(), 760);
+        setTimeout(() => this.hideLoadingScreen(), 1250);
     },
     // Loading Screen ausblenden und Auth Screen zeigen
     hideLoadingScreen() {
