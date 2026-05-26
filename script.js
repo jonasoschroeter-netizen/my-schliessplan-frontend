@@ -17,6 +17,32 @@ let ALL_FEATURES = {};
 const STRAPI_BASE_URL =
     (typeof window !== 'undefined' && window.__SCHLIESSPLAN_STRAPI_URL__) ||
     'http://127.0.0.1:1337';
+const DEFAULT_BRAND_LOGO_PATH = '/uploads/Screenshot_2025_10_11_153627_removebg_preview_5c3bb40aa7.png';
+const DEFAULT_BRAND_LOGO_DATA_URI = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"%3E%3Crect width="96" height="96" rx="18" fill="%23203d5d"/%3E%3Cpath d="M48 10 76 22v22c0 20-11 33-28 42-17-9-28-22-28-42V22l28-12Z" fill="%23f8fafc" opacity=".95"/%3E%3Cpath d="M48 16v64M34 22v44M62 22v44" stroke="%23203d5d" stroke-width="5" stroke-linecap="round"/%3E%3Ccircle cx="48" cy="45" r="14" fill="none" stroke="%23203d5d" stroke-width="5"/%3E%3Cpath d="M48 58v14M41 67h14" stroke="%23203d5d" stroke-width="5" stroke-linecap="round"/%3E%3C/svg%3E';
+
+function getDefaultBrandLogoUrl() {
+    return `${STRAPI_BASE_URL}${DEFAULT_BRAND_LOGO_PATH}`;
+}
+
+function applyBrandLogoUrl(logoUrl) {
+    if (!logoUrl) return;
+    const logoImg = document.querySelector('#logo img');
+    if (logoImg) {
+        logoImg.onerror = function () {
+            if (this.src !== DEFAULT_BRAND_LOGO_DATA_URI) {
+                this.onerror = null;
+                applyBrandLogoUrl(DEFAULT_BRAND_LOGO_DATA_URI);
+            }
+        };
+        logoImg.src = logoUrl;
+        logoImg.alt = 'Firmenlogo';
+    }
+    document.documentElement.style.setProperty('--firmen-logo', `url("${logoUrl}")`);
+}
+
+function applyDefaultBrandLogo() {
+    applyBrandLogoUrl(getDefaultBrandLogoUrl());
+}
 
 // Netlify Production URL für E-Mail-Bestätigung
 const NETLIFY_URL = 'https://frontend-schlieplan.netlify.app';
@@ -1041,6 +1067,7 @@ if (globalSettingsResponse && globalSettingsResponse.data) {
         }
 
         await loadSchliessplanSystemOptionsFromBackend();
+        applyDefaultBrandLogo();
 
         // Logo setzen
         if (globalSettingsResponse && globalSettingsResponse.data) {

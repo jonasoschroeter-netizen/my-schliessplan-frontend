@@ -4425,3 +4425,73 @@ body.program-premium .schliessplan-table tbody tr.row-drag-over-after td {
         margin: 12px auto !important;
     }
 }
+
+/* Netlify visual correction: final brand rules */
+body.program-premium .option-card {
+    --option-accent: #203d5d !important;
+    --option-accent-rgb: 32, 61, 93 !important;
+    border: 1px solid #cdd9e5 !important;
+    border-top: 1px solid #cdd9e5 !important;
+    background: #ffffff !important;
+    box-shadow: 0 8px 24px rgba(20, 32, 51, 0.075) !important;
+}
+
+body.program-premium .option-card:hover,
+body.program-premium .option-card.selected {
+    border-color: #203d5d !important;
+    border-top-color: #203d5d !important;
+    background: #f6f9fc !important;
+}
+
+body.program-premium .option-card.selected {
+    box-shadow: inset 0 0 0 1px #203d5d, 0 16px 36px rgba(32, 61, 93, 0.14) !important;
+}
+
+body.program-premium .option-card:hover p:first-of-type,
+body.program-premium .option-card.selected p:first-of-type {
+    color: #203d5d !important;
+}
+
+body.program-premium .option-card.is-custom-card,
+body.program-premium .option-card.selected-custom {
+    --option-accent: #16865f !important;
+    --option-accent-rgb: 22, 134, 95 !important;
+    border-color: #16865f !important;
+    border-top-color: #16865f !important;
+}
+
+body.program-premium .option-card.selected-custom {
+    background: rgba(22, 134, 95, 0.10) !important;
+    box-shadow: inset 0 0 0 1px #16865f, 0 16px 36px rgba(22, 134, 95, 0.14) !important;
+}
+
+body.program-premium .option-card.is-custom-card p:first-of-type,
+body.program-premium .option-card.selected-custom p:first-of-type {
+    color: #16865f !important;
+}
+
+body.program-premium .option-card::before {
+    background-image: var(--firmen-logo) !important;
+    background-color: transparent !important;
+    opacity: 0.13 !important;
+}
+
+body.program-premium .option-card.selected::before,
+body.program-premium .option-card.selected-custom::before {
+    opacity: 0.18 !important;
+}
+
+body.program-premium .schliessplan-table th,
+body.program-premium .schliessplan-header-main,
+body.program-premium .schliessplan-header-sub,
+body.program-premium .schliessplan-header-vertical {
+    background: #203d5d !important;
+    background-image: none !important;
+    color: #ffffff !important;
+}
+
+body.program-premium .schliessplan-header-main *,
+body.program-premium .schliessplan-header-sub *,
+body.program-premium .schliessplan-header-vertical * {
+    color: #ffffff !important;
+}
