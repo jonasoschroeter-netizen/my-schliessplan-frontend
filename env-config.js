@@ -78,9 +78,11 @@
         console.info('[Schließplan] Supabase:', mode, pick.url);
     }
 
-    /** Strapi CMS selection. Supports local, cloud and custom LAN server URLs. */
+    /** Strapi CMS selection. Supports local, laptop tunnel, cloud and custom URLs. */
     var STRAPI_CLOUD = 'https://brave-basketball-98ec57b285.strapiapp.com';
+    var STRAPI_PUBLIC = 'https://blacks-job-eliminate-flex.trycloudflare.com';
     var STRAPI_LOCAL = 'http://127.0.0.1:1337';
+    var STRAPI_LAPTOP = 'http://100.102.21.19:1337';
     var STRAPI_CUSTOM_STORAGE_KEY = 'schliessplan-strapi-custom-url';
 
     function normalizeStrapiUrl(value) {
@@ -120,6 +122,9 @@
         qpStrapi &&
         qpStrapi !== 'cloud' &&
         qpStrapi !== 'c' &&
+        qpStrapi !== 'public' &&
+        qpStrapi !== 'tunnel' &&
+        qpStrapi !== 'laptop' &&
         qpStrapi !== 'local' &&
         qpStrapi !== 'l' &&
         qpStrapi !== 'server' &&
@@ -133,20 +138,28 @@
     var isNetlifyPage =
         typeof location !== 'undefined' &&
         /(^|\.)netlify\.app$/i.test(location.hostname || '');
-    var shouldDefaultStrapiToCloud = isHttpsPage || isNetlifyPage || isFileProtocol;
+    var shouldUsePublicStrapi = isHttpsPage || isNetlifyPage || isFileProtocol;
 
-    var strapiMode = shouldDefaultStrapiToCloud ? 'cloud' : 'local';
-    var strapiUrl = shouldDefaultStrapiToCloud ? STRAPI_CLOUD : STRAPI_LOCAL;
+    var strapiMode = shouldUsePublicStrapi ? 'public' : 'local';
+    var strapiUrl = shouldUsePublicStrapi ? STRAPI_PUBLIC : STRAPI_LOCAL;
 
     if (explicitCustomUrl) {
         strapiMode = 'server';
         strapiUrl = explicitCustomUrl;
         setStoredMode('schliessplan-strapi-mode', 'server');
         setStoredValue(STRAPI_CUSTOM_STORAGE_KEY, explicitCustomUrl);
+    } else if (qpStrapi === 'public' || qpStrapi === 'tunnel') {
+        strapiMode = 'public';
+        strapiUrl = STRAPI_PUBLIC;
+        setStoredMode('schliessplan-strapi-mode', 'public');
     } else if (qpStrapi === 'cloud' || qpStrapi === 'c') {
         strapiMode = 'cloud';
         strapiUrl = STRAPI_CLOUD;
         setStoredMode('schliessplan-strapi-mode', 'cloud');
+    } else if (qpStrapi === 'laptop') {
+        strapiMode = 'laptop';
+        strapiUrl = STRAPI_LAPTOP;
+        setStoredMode('schliessplan-strapi-mode', 'laptop');
     } else if (qpStrapi === 'local' || qpStrapi === 'l') {
         strapiMode = 'local';
         strapiUrl = STRAPI_LOCAL;
@@ -155,21 +168,36 @@
         strapiMode = 'server';
         strapiUrl = strapiStoredCustomUrl;
         setStoredMode('schliessplan-strapi-mode', 'server');
+    } else if (shouldUsePublicStrapi) {
+        if (strapiStored === 'server' && strapiStoredCustomUrl && /^https:\/\//i.test(strapiStoredCustomUrl)) {
+            strapiMode = 'server';
+            strapiUrl = strapiStoredCustomUrl;
+        } else {
+            strapiMode = 'public';
+            strapiUrl = STRAPI_PUBLIC;
+            setStoredMode('schliessplan-strapi-mode', 'public');
+        }
+    } else if (strapiStored === 'public') {
+        strapiMode = 'public';
+        strapiUrl = STRAPI_PUBLIC;
     } else if (strapiStored === 'cloud') {
         strapiMode = 'cloud';
         strapiUrl = STRAPI_CLOUD;
+    } else if (strapiStored === 'laptop') {
+        strapiMode = 'laptop';
+        strapiUrl = STRAPI_LAPTOP;
     } else if (strapiStored === 'server' && strapiStoredCustomUrl) {
         strapiMode = 'server';
         strapiUrl = strapiStoredCustomUrl;
-    } else if (strapiStored === 'local' && !shouldDefaultStrapiToCloud) {
+    } else if (strapiStored === 'local') {
         strapiMode = 'local';
         strapiUrl = STRAPI_LOCAL;
     } else {
         if (strapiStored === 'server' && !strapiStoredCustomUrl) {
             removeStoredValue('schliessplan-strapi-mode');
         }
-        strapiMode = shouldDefaultStrapiToCloud ? 'cloud' : 'local';
-        strapiUrl = shouldDefaultStrapiToCloud ? STRAPI_CLOUD : STRAPI_LOCAL;
+        strapiMode = 'local';
+        strapiUrl = STRAPI_LOCAL;
     }
 
     if (isHttpsPage && /^http:\/\//i.test(strapiUrl) && typeof console !== 'undefined' && console.warn) {
