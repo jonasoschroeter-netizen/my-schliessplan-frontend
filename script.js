@@ -11,6 +11,10 @@ const DEFAULT_SCHLIESSPLAN_SYSTEM_OPTIONS = [
 let schliessplanSystemOptions = DEFAULT_SCHLIESSPLAN_SYSTEM_OPTIONS.map(option => ({ ...option }));
 let draggedSchliessplanRowId = null;
 let activeSchliessplanPointerDrag = null;
+const PLAN_REBUILD_PARAM = 'plan';
+const PLAN_REBUILD_CODE_PARAM = 'planCode';
+const PLAN_REBUILD_VERSION = 1;
+const PLAN_REBUILD_COLUMNS = ['plan_rebuild_url', 'plan_rebuild_code'];
 // ALL_FEATURES wird jetzt dynamisch aus dem Backend geladen
 let ALL_FEATURES = {};
 /** Überschreiben: env-config.js setzt window.__SCHLIESSPLAN_STRAPI_URL__ (Standard: http://127.0.0.1:1337) */
@@ -519,6 +523,8 @@ function rebuildAllFeaturesFromContentTypes() {
         const featureKey = f.key || `feature_${f.id ?? idx}`;
         ALL_FEATURES[featureKey] = {
             name: f.name || featureKey,
+            key: featureKey,
+            urlCode: f.urlCode || f.planUrlCode || f.rebuildCode || f.reproduktionsCode || f.key || featureKey,
             icon: 'fa-circle',
             color: 'text-gray-600',
             title: (f.description && String(f.description).trim()) || f.name || featureKey
@@ -581,6 +587,481 @@ function hexToRgba(hex, alpha = 0.14) {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+function normalizePlanCodeValue(value) {
+    const normalized = String(value ?? '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .replace(/[|]/g, '/')
+        .replace(/[:]/g, '-')
+        .replace(/_/g, '-');
+    return normalized || '-';
+}
+
+function normalizePlanCodeLookupValue(value) {
+    return normalizePlanCodeValue(value)
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/ß/g, 'ss');
+}
+
+function getPlanUrlCodeFromOption(option, fallback = '') {
+    if (!option) return normalizePlanCodeValue(fallback);
+    return normalizePlanCodeValue(
+        option.urlCode ||
+        option.planUrlCode ||
+        option.rebuildCode ||
+        option.reproduktionsCode ||
+        option.code ||
+        option.key ||
+        option.name ||
+        fallback
+    );
+}
+
+function getPlanCodeCandidates(option) {
+    if (!option) return [];
+    return [
+        option.urlCode,
+        option.planUrlCode,
+        option.rebuildCode,
+        option.reproduktionsCode,
+        option.code,
+        option.key,
+        option.name,
+        option.text,
+        option.id
+    ].filter(value => value !== undefined && value !== null && String(value).trim() !== '');
+}
+
+function findOptionByPlanCode(options = [], value) {
+    const needle = normalizePlanCodeLookupValue(value);
+    return (options || []).find(option =>
+        getPlanCodeCandidates(option).some(candidate => normalizePlanCodeLookupValue(candidate) === needle)
+    ) || null;
+}
+
+function getContentTypeItemPlanCode(typeName, value) {
+    const item = findOptionByPlanCode(contentTypes[typeName] || [], value);
+    return getPlanUrlCodeFromOption(item, value);
+}
+
+function resolveContentTypeNameFromPlanCode(typeName, value) {
+    const item = findOptionByPlanCode(contentTypes[typeName] || [], value);
+    return item?.name || item?.text || value || '';
+}
+
+function getSystemPlanCode(systemId) {
+    const system = findSchliessplanSystemOption(systemId);
+    return getPlanUrlCodeFromOption(system, systemId || '-');
+}
+
+function resolveSystemKeyFromPlanCode(value) {
+    const system = findSchliessplanSystemOption(value);
+    return system ? system.key : value;
+}
+
+function resolveSystemNameFromPlanCode(value) {
+    const system = findSchliessplanSystemOption(value);
+    return system ? system.name : value;
+}
+
+function getFunctionPlanCode(featureKey) {
+    const feature = ALL_FEATURES[featureKey];
+    return getPlanUrlCodeFromOption(feature, featureKey);
+}
+
+function resolveFunctionKeyFromPlanCode(value) {
+    const needle = normalizePlanCodeLookupValue(value);
+    return Object.keys(ALL_FEATURES || {}).find(featureKey => {
+        const feature = ALL_FEATURES[featureKey];
+        return [featureKey, ...getPlanCodeCandidates(feature)]
+            .some(candidate => normalizePlanCodeLookupValue(candidate) === needle);
+    }) || value;
+}
+
+function encodePlanRebuildPayload(payload) {
+    const json = JSON.stringify(payload || {});
+    const bytes = new TextEncoder().encode(json);
+    let binary = '';
+    bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function decodePlanRebuildPayload(token) {
+    const normalized = String(token || '').replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+function syncCurrentPlanDataFromDom() {
+    if (!planData || !Array.isArray(planData.rows) || typeof document === 'undefined') return;
+
+    planData.rows.forEach(row => {
+        const rowElement = document.querySelector(`tr[data-row-id="${row.id}"]`);
+        if (!rowElement) return;
+
+        const typSelect = rowElement.querySelector('select[onchange*="typ"]');
+        if (typSelect) row.typ = typSelect.value;
+
+        const systemSelect = rowElement.querySelector('select[onchange*="systemId"]');
+        if (systemSelect) {
+            const systemOption = findSchliessplanSystemOption(systemSelect.value);
+            row.systemId = systemOption ? systemOption.key : systemSelect.value;
+        }
+
+        const techSelect = rowElement.querySelector('select[onchange*="techType"]');
+        if (techSelect) row.techType = techSelect.value;
+
+        const massInputs = rowElement.querySelectorAll('input[onchange*="mass"]');
+        massInputs.forEach(input => {
+            const onChangeStr = input.getAttribute('onchange') || '';
+            if (onChangeStr.includes('massA')) row.massA = input.value || row.massA;
+            if (onChangeStr.includes('massI')) row.massI = input.value || row.massI;
+        });
+
+        const anzahlInput = rowElement.querySelector('input[type="number"]');
+        if (anzahlInput) {
+            const parsed = parseInt(anzahlInput.value, 10);
+            row.anzahl = Number.isNaN(parsed) ? row.anzahl : parsed;
+        }
+
+        const tuerInput = rowElement.querySelector('input[placeholder*="Bezeichnung"]');
+        if (tuerInput && tuerInput.value.trim()) row.tuer = tuerInput.value.trim();
+
+        const matrixCells = rowElement.querySelectorAll('.schliessmatrix-cell');
+        if (matrixCells.length > 0) {
+            row.matrix = Array.from(matrixCells).map(cell => cell.classList.contains('checked'));
+        }
+    });
+
+    const keyInputs = document.querySelectorAll('#schluessel-header-dynamic input');
+    keyInputs.forEach((input, index) => {
+        if (planData.keys && planData.keys[index]) {
+            planData.keys[index].name = input.value || planData.keys[index].name;
+        }
+    });
+}
+
+function getCleanPlanDataForShare(sourcePlanData = planData) {
+    const source = sourcePlanData && typeof sourcePlanData === 'object'
+        ? sourcePlanData
+        : { rows: [], keys: [] };
+    const rows = Array.isArray(source.rows) ? source.rows : [];
+    const keys = Array.isArray(source.keys) ? source.keys : [];
+
+    return {
+        rows: rows.map((row, index) => ({
+            id: row.id ?? `row-${index + 1}`,
+            pos: Number.isFinite(Number(row.pos)) ? Number(row.pos) : index + 1,
+            tuer: row.tuer || '',
+            typ: row.typ || '',
+            zylinderSystemId: row.zylinderSystemId ?? null,
+            systemId: row.systemId ?? null,
+            techType: row.techType || '',
+            massA: row.massA || '',
+            massI: row.massI || '',
+            anzahl: Number.isFinite(Number(row.anzahl)) ? Number(row.anzahl) : 1,
+            funktionen: { ...(row.funktionen || {}) },
+            matrix: Array.isArray(row.matrix) ? row.matrix.map(Boolean) : []
+        })),
+        keys: keys.map((key, index) => ({
+            id: key.id ?? `key-${index + 1}`,
+            name: key.name || `Gruppe ${index + 1}`
+        }))
+    };
+}
+
+function getFunctionNamesForPlanCode(funktionen) {
+    return Object.keys(funktionen || {})
+        .filter(key => funktionen[key])
+        .map(key => getFunctionPlanCode(key))
+        .filter(Boolean);
+}
+
+function getSystemNameForPlanCode(systemId) {
+    return getSystemPlanCode(systemId);
+}
+
+function buildRowKeyLogic(row, keyCount) {
+    return Array.from({ length: keyCount }, (_, index) => row.matrix && row.matrix[index] ? 'X' : '/').join('');
+}
+
+function buildPlanRebuildCode(sourcePlanData = planData) {
+    const clean = getCleanPlanDataForShare(sourcePlanData);
+    const keyNames = clean.keys.map(key => normalizePlanCodeValue(key.name)).join('_') || '-';
+    const rowCodes = clean.rows.map((row, index) => {
+        const functionNames = getFunctionNamesForPlanCode(row.funktionen)
+            .map(normalizePlanCodeValue)
+            .join('+');
+        const techType = row.techType || inferTechTypeFromSystemOption(findSchliessplanSystemOption(row.systemId)) || '-';
+        const fields = [
+            normalizePlanCodeValue(resolveContentTypeNameFromPlanCode('tueren', row.tuer) ? getContentTypeItemPlanCode('tueren', row.tuer) : row.tuer),
+            normalizePlanCodeValue(row.typ),
+            normalizePlanCodeValue(getSystemNameForPlanCode(row.systemId)),
+            normalizePlanCodeValue(techType),
+            normalizePlanCodeValue(`${row.massA || '-'}/${row.massI || '-'}`),
+            normalizePlanCodeValue(row.anzahl),
+            normalizePlanCodeValue(functionNames || '-')
+        ];
+        return `Row${index + 1}:${fields.join('_')}:Keylogic:${buildRowKeyLogic(row, clean.keys.length)}`;
+    });
+
+    return [`Keys:${keyNames}`, ...rowCodes].join('|');
+}
+
+function buildPlanRebuildPayload(sourcePlanData = planData, generatedAt = new Date().toISOString()) {
+    const cleanPlanData = getCleanPlanDataForShare(sourcePlanData);
+    return {
+        version: PLAN_REBUILD_VERSION,
+        generatedAt,
+        code: buildPlanRebuildCode(cleanPlanData),
+        userAnswers: { ...(userAnswers || {}) },
+        currentQuestionIndex,
+        planData: cleanPlanData
+    };
+}
+
+function buildPlanRebuildUrlFromPayload(payload) {
+    if (typeof window === 'undefined' || !window.location) return '';
+    const url = new URL(window.location.href);
+    if (/dashboard\.html$/i.test(url.pathname)) {
+        url.pathname = url.pathname.replace(/dashboard\.html$/i, 'start.html');
+    }
+    url.searchParams.delete(PLAN_REBUILD_PARAM);
+    url.searchParams.set(PLAN_REBUILD_CODE_PARAM, payload.code || buildPlanRebuildCode(payload.planData));
+    url.hash = '';
+    return url.toString();
+}
+
+function parseLegacyPlanRowCode(segment, keyCount) {
+    const parts = segment.split(':');
+    if (!/^Row\d+$/i.test(parts[0] || '')) return null;
+    const keylogicIndex = parts.findIndex(part => /^Keylogic$/i.test(part));
+    if (keylogicIndex < 0) return null;
+
+    const rowParts = parts.slice(1, keylogicIndex);
+    const [doorCode, typ, systemCode, techType, mass, anzahl, functionsCode] = rowParts;
+    const [massA = '30', massI = '30'] = String(mass || '30/30').split('/');
+    const functionParts = String(functionsCode || '')
+        .split(/[,+]/)
+        .map(item => item.trim())
+        .filter(item => item && item !== '-');
+    const funktionen = {};
+    functionParts.forEach(code => {
+        funktionen[resolveFunctionKeyFromPlanCode(code)] = true;
+    });
+
+    const logic = parts[keylogicIndex + 1] || '';
+    const systemKey = resolveSystemKeyFromPlanCode(systemCode || 'mechanisch');
+    return {
+        id: Date.now() + Math.floor(Math.random() * 100000),
+        pos: 0,
+        tuer: resolveContentTypeNameFromPlanCode('tueren', doorCode) || doorCode || '',
+        typ: typ || ZYLINDER_ARTEN[0],
+        zylinderSystemId: null,
+        systemId: systemKey,
+        techType: techType || inferTechTypeFromSystemOption(findSchliessplanSystemOption(systemKey)) || 'mechanisch',
+        massA: massA || '30',
+        massI: massI || '30',
+        anzahl: Number.isFinite(Number(anzahl)) ? Number(anzahl) : 1,
+        funktionen,
+        matrix: Array.from({ length: keyCount }, (_, index) => logic[index] === 'X'),
+        isEditingTuer: false,
+        isAddingCustomTuer: false
+    };
+}
+
+function parsePlanRowCode(segment, keyCount) {
+    const modernMatch = String(segment || '').match(/^Row(\d+):(.+):Keylogic:([X/]+)$/i);
+    if (!modernMatch) return parseLegacyPlanRowCode(segment, keyCount);
+
+    const rowParts = modernMatch[2].split('_');
+    const [doorCode, typ, systemCode, techType, mass, anzahl, functionsCode] = rowParts;
+    const [massA = '30', massI = '30'] = String(mass || '30/30').split('/');
+    const funktionen = {};
+    String(functionsCode || '')
+        .split('+')
+        .map(item => item.trim())
+        .filter(item => item && item !== '-')
+        .forEach(code => {
+            funktionen[resolveFunctionKeyFromPlanCode(code)] = true;
+        });
+
+    const systemKey = resolveSystemKeyFromPlanCode(systemCode || 'mechanisch');
+    return {
+        id: Date.now() + Number(modernMatch[1] || 0),
+        pos: Number(modernMatch[1] || 0),
+        tuer: resolveContentTypeNameFromPlanCode('tueren', doorCode) || doorCode || '',
+        typ: typ || ZYLINDER_ARTEN[0],
+        zylinderSystemId: null,
+        systemId: systemKey,
+        techType: techType || inferTechTypeFromSystemOption(findSchliessplanSystemOption(systemKey)) || 'mechanisch',
+        massA: massA || '30',
+        massI: massI || '30',
+        anzahl: Number.isFinite(Number(anzahl)) ? Number(anzahl) : 1,
+        funktionen,
+        matrix: Array.from({ length: keyCount }, (_, index) => modernMatch[3][index] === 'X'),
+        isEditingTuer: false,
+        isAddingCustomTuer: false
+    };
+}
+
+function parsePlanRebuildCodeToSession(code) {
+    const segments = String(code || '')
+        .split('|')
+        .map(segment => segment.trim())
+        .filter(Boolean);
+    if (segments.length === 0) return null;
+
+    const keysSegment = segments.find(segment => /^Keys:/i.test(segment));
+    const keyNames = keysSegment
+        ? keysSegment.replace(/^Keys:/i, '').split('_').filter(Boolean)
+        : [];
+    const keys = (keyNames.length > 0 ? keyNames : ['Gruppe 1']).map((name, index) => ({
+        id: Date.now() + 50000 + index,
+        name: name === '-' ? `Gruppe ${index + 1}` : name
+    }));
+
+    const rows = segments
+        .filter(segment => /^Row\d+:/i.test(segment))
+        .map(segment => parsePlanRowCode(segment, keys.length))
+        .filter(Boolean)
+        .map((row, index) => ({ ...row, pos: index + 1 }));
+
+    if (rows.length === 0) return null;
+
+    return {
+        schliessplanId: null,
+        kundeId: null,
+        userAnswers: {},
+        planData: { rows, keys, _rebuild: { version: PLAN_REBUILD_VERSION, code } },
+        currentQuestionIndex: 0,
+        restoredFromUrl: true
+    };
+}
+
+function createPlanRebuildMeta(sourcePlanData = planData) {
+    syncCurrentPlanDataFromDom();
+    const generatedAt = new Date().toISOString();
+    const payload = buildPlanRebuildPayload(sourcePlanData, generatedAt);
+    const cleanPlanData = getCleanPlanDataForShare(sourcePlanData);
+    return {
+        version: PLAN_REBUILD_VERSION,
+        generatedAt,
+        code: payload.code,
+        url: buildPlanRebuildUrlFromPayload(payload),
+        rowCount: cleanPlanData.rows.length,
+        keyCount: cleanPlanData.keys.length
+    };
+}
+
+function getPlanRebuildSessionFromUrl() {
+    if (typeof window === 'undefined' || !window.location) return null;
+    const params = new URLSearchParams(window.location.search || '');
+    const readableCode = params.get(PLAN_REBUILD_CODE_PARAM);
+    if (readableCode) {
+        const session = parsePlanRebuildCodeToSession(readableCode);
+        if (session) return session;
+        console.warn('Lesbarer Plan-Code konnte nicht gelesen werden.');
+    }
+
+    const token = params.get(PLAN_REBUILD_PARAM);
+    if (!token) return null;
+
+    try {
+        const payload = decodePlanRebuildPayload(token);
+        const planDataFromPayload = payload.planData || {
+            rows: Array.isArray(payload.rows) ? payload.rows : [],
+            keys: Array.isArray(payload.keys) ? payload.keys : []
+        };
+        if (!Array.isArray(planDataFromPayload.rows) || planDataFromPayload.rows.length === 0) {
+            throw new Error('Plan-Link enthaelt keine Zeilen.');
+        }
+
+        return {
+            schliessplanId: null,
+            kundeId: null,
+            userAnswers: payload.userAnswers || payload.user_answers || {},
+            planData: planDataFromPayload,
+            currentQuestionIndex: payload.currentQuestionIndex || 0,
+            restoredFromUrl: true
+        };
+    } catch (error) {
+        console.warn('Plan-Link konnte nicht gelesen werden:', error);
+        return null;
+    }
+}
+
+async function copyPlanRebuildUrl() {
+    const input = document.getElementById('plan-rebuild-url-input');
+    const button = document.getElementById('copy-plan-rebuild-url-btn');
+    if (!input || !input.value) return;
+
+    try {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(input.value);
+        } else {
+            input.focus();
+            input.select();
+            document.execCommand('copy');
+        }
+        if (button) {
+            const previousText = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-check mr-2"></i>Kopiert';
+            setTimeout(() => { button.innerHTML = previousText; }, 1800);
+        }
+    } catch (error) {
+        console.warn('Reproduktions-Link konnte nicht kopiert werden:', error);
+    }
+}
+
+function renderPlanRebuildUrlPanel() {
+    if (!elements.schliessplanContainer || !planData || !Array.isArray(planData.rows) || planData.rows.length === 0) {
+        return;
+    }
+
+    let panel = document.getElementById('plan-rebuild-url-panel');
+    if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'plan-rebuild-url-panel';
+        panel.className = 'mt-4 rounded-xl border border-[#d4e0ea] bg-[#f8fbfd] p-4 shadow-sm';
+        panel.innerHTML = `
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                    <p class="text-sm font-bold text-[#203d5d]">Reproduktions-Link</p>
+                    <p class="text-xs text-gray-500">Jede Zeile, jedes System, jede Funktion und die Schluesselmatrix werden im Link abgebildet.</p>
+                </div>
+                <button id="copy-plan-rebuild-url-btn" type="button" class="inline-flex items-center justify-center rounded-lg bg-[#203d5d] px-4 py-2 text-sm font-bold text-white hover:bg-[#1a344f]">
+                    <i class="fas fa-link mr-2"></i>Link kopieren
+                </button>
+            </div>
+            <input id="plan-rebuild-url-input" class="mt-3 w-full rounded-lg border border-[#c8d6e3] bg-white px-3 py-2 text-xs text-[#203d5d]" readonly>
+            <textarea id="plan-rebuild-code-input" class="mt-2 w-full rounded-lg border border-[#dbe5ee] bg-white px-3 py-2 text-xs text-gray-600" rows="2" readonly></textarea>
+        `;
+        const saveContainer = document.getElementById('save-to-profile-container');
+        if (saveContainer && saveContainer.parentNode) {
+            saveContainer.parentNode.insertBefore(panel, saveContainer);
+        } else {
+            elements.schliessplanContainer.appendChild(panel);
+        }
+    }
+
+    const meta = createPlanRebuildMeta();
+    const urlInput = document.getElementById('plan-rebuild-url-input');
+    const codeInput = document.getElementById('plan-rebuild-code-input');
+    if (urlInput) urlInput.value = meta.url || '';
+    if (codeInput) codeInput.value = meta.code || '';
+
+    const copyButton = document.getElementById('copy-plan-rebuild-url-btn');
+    if (copyButton && copyButton.dataset.bound !== 'true') {
+        copyButton.dataset.bound = 'true';
+        copyButton.addEventListener('click', copyPlanRebuildUrl);
+    }
+}
+
 function normalizeSchliessplanSystemOption(entry, fallbackIndex = 0) {
     const attrs = getAttributes(entry) || {};
     const name = attrs.name || attrs.label || attrs.title || `System ${fallbackIndex + 1}`;
@@ -589,6 +1070,7 @@ function normalizeSchliessplanSystemOption(entry, fallbackIndex = 0) {
         id: entry?.id ?? attrs.id ?? key,
         key,
         name,
+        urlCode: attrs.urlCode || attrs.planUrlCode || attrs.rebuildCode || attrs.reproduktionsCode || key,
         color: normalizeSystemColor(attrs.color || attrs.farbe || attrs.hexColor || attrs.hex_color, fallbackIndex === 0 ? '#2563eb' : '#16a34a'),
         sortOrder: Number(attrs.sortOrder ?? attrs.order ?? fallbackIndex),
         isActive: attrs.isActive !== false && attrs.active !== false,
@@ -607,10 +1089,12 @@ function getSchliessplanSystemOptions() {
 
 function findSchliessplanSystemOption(value) {
     const valueString = String(value ?? '');
+    const lookupValue = normalizePlanCodeLookupValue(valueString);
     return getSchliessplanSystemOptions().find(option =>
         String(option.id) === valueString ||
         String(option.key) === valueString ||
-        String(option.name) === valueString
+        String(option.name) === valueString ||
+        getPlanCodeCandidates(option).some(candidate => normalizePlanCodeLookupValue(candidate) === lookupValue)
     );
 }
 
@@ -676,6 +1160,7 @@ function collectZylindersFromQuestions(questionsResponse) {
                     id: zylinder.id,
                     name: zylinderData.name,
                     key: zylinderData.key || zylinderData.name.toLowerCase().replace(/\s+/g, '_'),
+                    urlCode: zylinderData.urlCode || zylinderData.planUrlCode || zylinderData.rebuildCode || zylinderData.reproduktionsCode,
                     description: zylinderData.description,
                     price: zylinderData.price,
                     sortOrder: zylinderData.sortOrder || 999,
@@ -1038,6 +1523,7 @@ if (globalSettingsResponse && globalSettingsResponse.data) {
                         id: cylinder.id,
                         name: cylinderData.name,
                         key: cylinderData.key || cylinderData.name.toLowerCase().replace(/\s+/g, '_'),
+                        urlCode: cylinderData.urlCode || cylinderData.planUrlCode || cylinderData.rebuildCode || cylinderData.reproduktionsCode,
                         description: cylinderData.description,
                         price: cylinderData.price,
                         sortOrder: cylinderData.sortOrder || 999,
@@ -1184,6 +1670,7 @@ if (globalSettingsResponse && globalSettingsResponse.data) {
                     id: item.id,
                     name: itemData.name,
                     key: itemData.key,
+                    urlCode: itemData.urlCode || itemData.planUrlCode || itemData.rebuildCode || itemData.reproduktionsCode,
                     description: itemData.description,
                     icon: processIcon(itemData.icon),
                     sortOrder: itemData.sortOrder || 999,
@@ -2488,6 +2975,7 @@ function renderPlan() {
             ${matrixCells}`;
             elements.schliessplanBody.appendChild(tr);
         });
+        renderPlanRebuildUrlPanel();
     } catch (err) {
         console.error('❌ renderPlan fehlgeschlagen:', err);
     }
@@ -2726,6 +3214,7 @@ function updateKeyName(input) {
     const key = planData.keys.find(k => String(k.id) === String(idRaw));
     if (key) {
         key.name = input.value;
+        renderPlanRebuildUrlPanel();
         markPlanDirty('key-name');
     }
 }
@@ -2736,6 +3225,7 @@ function toggleMatrix(cell, rowId, keyIndex) {
         row.matrix[keyIndex] = !row.matrix[keyIndex];
         cell.classList.toggle('checked');
         cell.innerHTML = row.matrix[keyIndex] ? '<i class="fas fa-times text-xl"></i>' : '';
+        renderPlanRebuildUrlPanel();
         markPlanDirty('matrix');
     }
 }
@@ -2943,7 +3433,11 @@ async function findOrCreateKunde(email, vorname, nachname, telefon) {
 
 function getCurrentPlanSignature() {
     try {
-        return JSON.stringify({ userAnswers, planData, currentQuestionIndex });
+        return JSON.stringify({
+            userAnswers,
+            planData: getCleanPlanDataForShare(planData),
+            currentQuestionIndex
+        });
     } catch (error) {
         return String(Date.now());
     }
@@ -3009,9 +3503,36 @@ function normalizeZylinderSystemIdForSupabase(systemId) {
     return Number.isInteger(numericId) ? numericId : null;
 }
 
-function buildSchliessplanPayload(kundeId, status = 'in_bearbeitung') {
+function isMissingPlanRebuildColumnError(error) {
+    if (!error) return false;
+    const message = String(error.message || error.details || error.hint || '').toLowerCase();
+    return PLAN_REBUILD_COLUMNS.some(column => message.includes(column.toLowerCase())) ||
+        (error.code === 'PGRST204' && message.includes('schema cache'));
+}
+
+async function writeSchliessplanRecord(supabaseClient, payload) {
+    if (activeSchliessplanId) {
+        return supabaseClient
+            .from('schliessplaene')
+            .update(payload)
+            .eq('id', activeSchliessplanId)
+            .select()
+            .single();
+    }
+
+    return supabaseClient
+        .from('schliessplaene')
+        .insert([payload])
+        .select()
+        .single();
+}
+
+function buildSchliessplanPayload(kundeId, status = 'in_bearbeitung', options = {}) {
+    const { includeRebuildColumns = true } = options;
     const selectedSystem = findCylinderSystemById(userAnswers.cylinderSystemId);
-    return {
+    const serializablePlanData = getSerializablePlanData();
+    const rebuildMeta = serializablePlanData._rebuild || createPlanRebuildMeta(serializablePlanData);
+    const payload = {
         kunde_id: kundeId,
         name: `${userAnswers.objekttyp || 'Schließplan'} - ${new Date().toLocaleDateString('de-DE')}`,
         objekttyp: userAnswers.objekttyp || null,
@@ -3020,11 +3541,18 @@ function buildSchliessplanPayload(kundeId, status = 'in_bearbeitung') {
         technologie: userAnswers.technologie || null,
         zylinder_system_id: normalizeZylinderSystemIdForSupabase(userAnswers.cylinderSystemId),
         zylinder_system_name: selectedSystem?.name || null,
-        plan_data: getSerializablePlanData(),
+        plan_data: serializablePlanData,
         user_answers: { ...(userAnswers || {}) },
         status,
         aktualisiert_am: new Date().toISOString()
     };
+
+    if (includeRebuildColumns) {
+        payload.plan_rebuild_url = rebuildMeta.url || null;
+        payload.plan_rebuild_code = rebuildMeta.code || null;
+    }
+
+    return payload;
 }
 
 async function persistCurrentPlan(options = {}) {
@@ -3046,33 +3574,22 @@ async function persistCurrentPlan(options = {}) {
     }
 
     activeKundeId = kundeId;
-    const payload = buildSchliessplanPayload(kundeId, status);
-    let savedPlan;
+    let payload = buildSchliessplanPayload(kundeId, status, { includeRebuildColumns: true });
+    let { data: savedPlan, error } = await writeSchliessplanRecord(supabaseClient, payload);
 
-    if (activeSchliessplanId) {
-        const { data, error } = await supabaseClient
-            .from('schliessplaene')
-            .update(payload)
-            .eq('id', activeSchliessplanId)
-            .select()
-            .single();
+    if (error && isMissingPlanRebuildColumnError(error)) {
+        console.warn('Supabase-Spalten fuer Reproduktions-Link fehlen noch, speichere ohne Zusatzspalten:', error);
+        payload = buildSchliessplanPayload(kundeId, status, { includeRebuildColumns: false });
+        ({ data: savedPlan, error } = await writeSchliessplanRecord(supabaseClient, payload));
+    }
 
-        if (error) {
-            throw new Error(`Fehler beim Aktualisieren des Schließplans: ${error.message}`);
-        }
-        savedPlan = data;
-    } else {
-        const { data, error } = await supabaseClient
-            .from('schliessplaene')
-            .insert([payload])
-            .select()
-            .single();
+    if (error) {
+        const action = activeSchliessplanId ? 'Aktualisieren' : 'Speichern';
+        throw new Error(`Fehler beim ${action} des Schließplans: ${error.message}`);
+    }
 
-        if (error) {
-            throw new Error(`Fehler beim Speichern des Schließplans: ${error.message}`);
-        }
-        savedPlan = data;
-        activeSchliessplanId = data.id;
+    if (!activeSchliessplanId && savedPlan?.id) {
+        activeSchliessplanId = savedPlan.id;
     }
 
     if (includeMediathek) {
@@ -4694,11 +5211,17 @@ function hideUserMenu() {
 
 // Stelle Session wieder her
 function getSerializablePlanData() {
-    return {
-        ...(planData || { rows: [], keys: [] }),
+    syncCurrentPlanDataFromDom();
+    const cleanForShare = getCleanPlanDataForShare(planData || { rows: [], keys: [] });
+    const serializable = {
+        ...(planData || {}),
+        rows: cleanForShare.rows,
+        keys: cleanForShare.keys,
         currentQuestionIndex,
         savedAt: new Date().toISOString()
     };
+    serializable._rebuild = createPlanRebuildMeta(serializable);
+    return serializable;
 }
 
 function getCurrentPlanSnapshot() {
@@ -4719,6 +5242,7 @@ function normalizeRestoredPlanData(rawPlanData) {
 
     restoredPlanData.rows = Array.isArray(restoredPlanData.rows) ? restoredPlanData.rows : [];
     restoredPlanData.keys = Array.isArray(restoredPlanData.keys) ? restoredPlanData.keys : [];
+    delete restoredPlanData._rebuild;
     return restoredPlanData;
 }
 
@@ -4738,8 +5262,17 @@ function restoreSession(sessionData, options = {}) {
         0;
     currentQuestionIndex = Number.isFinite(Number(restoredQuestionIndex)) ? Number(restoredQuestionIndex) : 0;
 
-    activeSchliessplanId = sessionData.schliessplanId || sessionData.id || activeSchliessplanId || null;
-    activeKundeId = sessionData.kundeId || sessionData.kunde_id || activeKundeId || null;
+    if ('schliessplanId' in sessionData || 'id' in sessionData) {
+        activeSchliessplanId = sessionData.schliessplanId || sessionData.id || null;
+    } else {
+        activeSchliessplanId = activeSchliessplanId || null;
+    }
+
+    if ('kundeId' in sessionData || 'kunde_id' in sessionData) {
+        activeKundeId = sessionData.kundeId || sessionData.kunde_id || null;
+    } else {
+        activeKundeId = activeKundeId || null;
+    }
     lastRemoteSaveSignature = getCurrentPlanSignature();
 
     console.log('✅ Session wiederhergestellt', {
@@ -4803,6 +5336,18 @@ async function loadSchliessplanSessionById(planId) {
 }
 
 async function consumeStartupSessionIntent() {
+    const rebuildSession = getPlanRebuildSessionFromUrl();
+    if (rebuildSession) {
+        sessionStorage.removeItem(RESUME_SESSION_KEY);
+        sessionStorage.removeItem(RESUME_PLAN_ID_KEY);
+        sessionStorage.removeItem('continueSession');
+        sessionStorage.removeItem('lastSessionData');
+        sessionStorage.removeItem('viewPlanId');
+        activeSchliessplanId = null;
+        activeKundeId = null;
+        return restoreSession(rebuildSession);
+    }
+
     if (sessionStorage.getItem(START_NEW_CONFIG_KEY) === 'true') {
         sessionStorage.removeItem(START_NEW_CONFIG_KEY);
         sessionStorage.removeItem(RESUME_SESSION_KEY);

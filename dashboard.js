@@ -37,6 +37,11 @@ function statusClass(status) {
     return 'bg-gray-100 text-gray-800';
 }
 
+function isMissingOptionalSchliessplanColumn(error) {
+    const message = String(error?.message || '').toLowerCase();
+    return ['export_dateien', 'plan_rebuild_url', 'plan_rebuild_code'].some(column => message.includes(column));
+}
+
 function isDashboardSupabaseReady() {
     return supabaseClient && supabaseClient.auth && typeof supabaseClient.auth.getUser === 'function';
 }
@@ -146,13 +151,13 @@ async function loadSavedPlans() {
     try {
         let { data: plans, error: plansError } = await supabaseClient
             .from('schliessplaene')
-            .select('id, kunde_id, name, objekttyp, technologie, status, erstellt_am, aktualisiert_am, user_answers, plan_data, export_dateien')
+            .select('id, kunde_id, name, objekttyp, technologie, status, erstellt_am, aktualisiert_am, user_answers, plan_data, export_dateien, plan_rebuild_url, plan_rebuild_code')
             .eq('kunde_id', currentKunde.id)
             .order('aktualisiert_am', { ascending: false })
             .limit(50);
 
-        if (plansError && String(plansError.message || '').includes('export_dateien')) {
-            console.warn('Spalte export_dateien fehlt, Dashboard lädt ohne HTML-Link:', plansError);
+        if (plansError && isMissingOptionalSchliessplanColumn(plansError)) {
+            console.warn('Optionale Schliessplan-Spalten fehlen, Dashboard lädt mit Basisfeldern:', plansError);
             const fallbackResult = await supabaseClient
                 .from('schliessplaene')
                 .select('id, kunde_id, name, objekttyp, technologie, status, erstellt_am, aktualisiert_am, user_answers, plan_data')
@@ -181,6 +186,8 @@ async function loadSavedPlans() {
             const lastHtml = Array.isArray(plan.export_dateien) && plan.export_dateien.length > 0
                 ? plan.export_dateien[plan.export_dateien.length - 1]?.url
                 : null;
+            const rebuildUrl = plan.plan_rebuild_url || plan.plan_data?._rebuild?.url || null;
+            const encodedRebuildUrl = rebuildUrl ? encodeURIComponent(rebuildUrl) : '';
 
             return `
                 <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
@@ -198,6 +205,7 @@ async function loadSavedPlans() {
                             <button type="button" onclick="continuePlan('${plan.id}')" class="rounded-lg bg-[#203d5d] px-3 py-2 text-sm font-semibold text-white hover:bg-[#1a344f]">
                                 Fortsetzen
                             </button>
+                            ${rebuildUrl ? `<button type="button" onclick="copyPlanRebuildLink('${encodedRebuildUrl}', this)" class="rounded-lg border border-[#203d5d] px-3 py-2 text-sm font-semibold text-[#203d5d] hover:bg-[#f1f6fa]">Link</button>` : ''}
                             ${lastHtml ? `<a href="${escapeHtml(lastHtml)}" target="_blank" rel="noopener" class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100">HTML</a>` : ''}
                             <button type="button" onclick="deletePlan('${plan.id}')" class="rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50">
                                 Löschen
@@ -260,6 +268,35 @@ async function deletePlan(planId) {
     }
 }
 
+async function copyPlanRebuildLink(encodedUrl, button) {
+    const url = decodeURIComponent(encodedUrl || '');
+    if (!url) return;
+
+    try {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(url);
+        } else {
+            const tempInput = document.createElement('input');
+            tempInput.value = url;
+            tempInput.style.position = 'fixed';
+            tempInput.style.opacity = '0';
+            document.body.appendChild(tempInput);
+            tempInput.focus();
+            tempInput.select();
+            document.execCommand('copy');
+            tempInput.remove();
+        }
+        if (button) {
+            const original = button.textContent;
+            button.textContent = 'Kopiert';
+            setTimeout(() => { button.textContent = original; }, 1600);
+        }
+    } catch (error) {
+        console.warn('Plan-Link konnte nicht kopiert werden:', error);
+        alert('Link konnte nicht kopiert werden.');
+    }
+}
+
 async function handleLogout() {
     try {
         const { error } = await supabaseClient.auth.signOut();
@@ -277,5 +314,6 @@ async function handleLogout() {
 
 window.continuePlan = continuePlan;
 window.deletePlan = deletePlan;
+window.copyPlanRebuildLink = copyPlanRebuildLink;
 
 document.addEventListener('DOMContentLoaded', initDashboard);
